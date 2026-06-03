@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./apps/backend
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      HOST: 0.0.0.0
+      PORT: 8082
+      RELOAD: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    ports:
+      - "127.0.0.1:8082:8082"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3002
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    ports:
+      - "127.0.0.1:3002:3002"
+    restart: unless-stopped

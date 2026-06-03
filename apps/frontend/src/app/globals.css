@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --background: #eef4f7;
+  --foreground: #14354a;
+  --headline: #17384c;
+  --body-text: #2f5368;
+  --muted-text: #5d7e92;
+  --accent: #2f8299;
+  --accent-hover: #256d82;
+  --accent-soft: #b9dde6;
+  --card-bg: rgba(255, 255, 255, 0.92);
+  --card-border: #d5e4eb;
+  --input-bg: #f8fbfd;
+  --input-border: #c7dce6;
+  --placeholder: #8ca6b6;
+  --result-bg: #f2f8fb;
+  --result-border: #d5e5ef;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  background-image:
+    radial-gradient(circle at 10% 10%, rgba(132, 194, 207, 0.22), transparent 34%),
+    radial-gradient(circle at 85% 12%, rgba(173, 214, 226, 0.3), transparent 38%),
+    radial-gradient(circle at 15% 92%, rgba(201, 228, 236, 0.42), transparent 32%);
+}

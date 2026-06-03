@@ -1,0 +1,24 @@
+# --- Python Bytecode ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Virtual Environments (UV) ---
+.venv/
+venv/
+ENV/
+
+# --- LangGraph & Data ---
+.langgraph_api/
+
+# If you use local SQLite for persistent checkpointers
+*.sqlite
+*.db
+
+# Policy PDFs or temporary processing data
+data/raw/*
+!data/raw/.gitkeep
