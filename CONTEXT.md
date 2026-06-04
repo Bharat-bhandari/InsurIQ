@@ -5,7 +5,7 @@
 > fresh session) can reload full hackathon state from this file alone.
 > Keep it updated after any meaningful decision.
 >
-> **Scope note:** This file covers the *hackathon project* only. The full
+> **Scope note:** This file covers the _hackathon project_ only. The full
 > InsurIQ product context (extraction pipeline, three-layer doc model rationale,
 > storage architecture, the long-form decision log) is preserved separately in
 > Bharat's notes. The schema we reuse here (`src/states/policy.py`,
@@ -19,7 +19,7 @@ _Last updated: 2026-06-03_
 
 - **Hackathon:** Resilient Agents — TrueFoundry, fully online.
 - **Dates:** June 1 (kickoff 22:30 IST) → submission June 7 23:59 PT (= June 8 12:00 IST).
-- **Registered:** Yes. **No selection round** — open hackathon, just build + submit.
+- **Registered:** Yes. Open hackathon, just build + submit.
 - **Coordination:** Discord (`june-1-2026-resilient-agents-online-hackathon`). Submission link drops there.
 - **Required stack (all four must be used meaningfully):**
   - **AWS Bedrock** — foundation models
@@ -28,7 +28,7 @@ _Last updated: 2026-06-03_
   - **Guardrails** — input/output safety
 - **Judging:** routing/fallback setup · MCP scoped usage · guardrail coverage ·
   **resilience** (retries, state preservation, graceful degradation) · real-world
-  usefulness · **demo clarity** (show *what failed and how it recovered*).
+  usefulness · **demo clarity** (show _what failed and how it recovered_).
 - **Prizes:** 1st $3k / 2nd $2k / 3rd $1k (+ TFY & Bedrock credits) · $1k social
   prize (most impressions — Bharat is @himalayan_dev, build-in-public is a free
   second shot).
@@ -37,11 +37,11 @@ _Last updated: 2026-06-03_
 
 ## A2. The pivot — why we are NOT building the InsurIQ product this week
 
-| | InsurIQ product | This hackathon |
-| --- | --- | --- |
-| **Hard part** | Structured extraction from 40–80pp adversarial legal PDFs | **Resilience** under failure |
-| **Timeline** | Weeks/months | 7 days |
-| **What judges score** | (n/a) | Survival, not extraction accuracy |
+|                       | InsurIQ product                                           | This hackathon                    |
+| --------------------- | --------------------------------------------------------- | --------------------------------- |
+| **Hard part**         | Structured extraction from 40–80pp adversarial legal PDFs | **Resilience** under failure      |
+| **Timeline**          | Weeks/months                                              | 7 days                            |
+| **What judges score** | (n/a)                                                     | Survival, not extraction accuracy |
 
 **The extraction pipeline (upload → segment → extract → verify → human-review) is
 explicitly OUT of scope.** Building it would eat the whole week and score nothing.
@@ -52,22 +52,24 @@ and build the **resilient Q&A tier that sits on top of an already-extracted poli
 We start exactly where extraction would have ended.
 
 **Nothing is throwaway:** a resilient, grounded Q&A layer over a `Policy` object is
-*literally* InsurIQ's Q&A tier. This advances the real product — just seeded, not extracted.
+_literally_ InsurIQ's Q&A tier. This advances the real product — just seeded, not extracted.
 
 ---
 
 ## A3. PolicyDesk — the hackathon project
 
 **One-liner:** A resilient health-insurance-policy Q&A agent. Ask a real question
-about your policy, get a *cited* answer — and it keeps answering correctly when the
+about your policy, get a _cited_ answer — and it keeps answering correctly when the
 model goes down, a tool fails, and the process crashes mid-question.
 
 **Thesis sentence (say this in the demo, 3×, different words):**
-> *"Grounding is resilience: never state a policy fact you can't trace to a clause —
+
+> _"Grounding is resilience: never state a policy fact you can't trace to a clause —
 > even when the model, the tool, and the process all fail. In a domain where a
-> confident wrong answer costs someone their claim, grounding IS the resilience story."*
+> confident wrong answer costs someone their claim, grounding IS the resilience story."_
 
 **Demo question (the canonical multi-step, non-local one):**
+
 > "I'm having knee replacement surgery next month. Is it covered, and is there a
 > waiting period?" → needs: specific-disease 24mo wait + PED wait + 'longer applies'
 > meta-rule + room-rent interaction. Genuinely multi-step → perfect for checkpoint-resume.
@@ -77,17 +79,19 @@ model goes down, a tool fails, and the process crashes mid-question.
 ## A4. Two-tier resilience model (the core framing)
 
 **Tier 1 — Gateway resilience (declarative; TrueFoundry enforces, we configure):**
+
 - Model fallback chain (PROVEN — see A5)
 - Input guardrail: PII redaction + prompt-injection block
 - MCP scoped tool access + audit log
 
 **Tier 2 — Orchestration resilience (our LangGraph code — THE DIFFERENTIATOR):**
+
 - Tool-failure conditional branch → **honest degradation** using existing verification states
 - **Checkpoint resume** after a mid-graph crash (no rework)
 - **Grounding gate** node — refuse to assert any fact not backed by a VERIFIED Evidence span
 
-**The gap we exploit (our Aegis-style insight):** the gateway makes *model calls*
-resilient but knows nothing about *agent state*. Orchestration-layer resilience
+**The gap we exploit (our Aegis-style insight):** the gateway makes _model calls_
+resilient but knows nothing about _agent state_. Orchestration-layer resilience
 (tool-fail degradation, checkpoint resume, grounding gate) is the ground the prior
 winners (Aegis = runtime, Unsinkable = library) left open. Neither built a stateful
 LangGraph agent. We do.
@@ -127,13 +131,15 @@ LangGraph agent. We do.
 ## A7. Tools, guardrails, receipt
 
 **Tools (read-only over the seed `Policy`; each returns Evidence WITH spans intact):**
+
 - `get_waiting_periods()` → `WaitingPeriods`
 - `get_room_rent_rule()` → `RoomRentRule`
 - `resolve_for_user(condition)` → relevant `ResolvedFacts`
 - `get_sub_limit(condition)` → matching `SubLimit`
-- Tools return *"24 months, clause 6.2.4(d) p12, status=VERIFIED"* — grounding flows through the tool layer.
+- Tools return _"24 months, clause 6.2.4(d) p12, status=VERIFIED"_ — grounding flows through the tool layer.
 
 **Guardrails:**
+
 - **Input (gateway-native):** PII redaction; prompt-injection block.
 - **Output (our graph node — domain-specific):** grounding gate. Every policy claim
   must trace to a VERIFIED Evidence span; ungrounded → block / regenerate / honest
@@ -167,6 +173,7 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 ## A9. Scope
 
 **IN (build this week):**
+
 - Seed `Policy` fixture (one Niva Bupa object, hand-assembled once)
 - LangGraph Q&A graph: plan → tool → synthesize → grounding gate; with checkpointer + one conditional branch
 - MCP tools (read-only) + BOTH scoping demos
@@ -176,6 +183,7 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 - **ONE demo screen** (Q&A + citations + chaos toggles + receipt)
 
 **OUT (explicitly NOT this week — remains real InsurIQ future, untouched):**
+
 - Upload flow · document-type segmentation · extraction LLM jobs · OCR ·
   human-review correction UI · multi-PDF · real auth · full product design system ·
   Postgres extraction store (stub/minimize) · curated policy DB
@@ -184,15 +192,15 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 
 ## A10. Build order (risk-first)
 
-| # | Step | Why here |
-| --- | --- | --- |
-| 1 | Update CONTEXT.md | ✅ (this file) |
-| 2 | Seed `Policy` fixture | Everything downstream queries it |
-| 3 | **Vertical slice: chaos toggle → tool-fail branch → checkpoint resume** (CLI only, stub policy) | De-risk the two scariest UNPROVEN unknowns on day 2, not day 6 |
-| 4 | Real LangGraph Q&A graph + grounding gate | Build on proven foundations |
-| 5 | MCP tools (both scoping demos) + guardrails via gateway | Required-tool integrations |
-| 6 | The ONE demo screen + receipt display | Design once, correctly, knowing exactly what to show |
-| 7 | Polish chaos controls + record demo | The ~60%-of-score part gets dedicated time |
+| #   | Step                                                                                            | Why here                                                       |
+| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1   | Update CONTEXT.md                                                                               | ✅ (this file)                                                 |
+| 2   | Seed `Policy` fixture                                                                           | Everything downstream queries it                               |
+| 3   | **Vertical slice: chaos toggle → tool-fail branch → checkpoint resume** (CLI only, stub policy) | De-risk the two scariest UNPROVEN unknowns on day 2, not day 6 |
+| 4   | Real LangGraph Q&A graph + grounding gate                                                       | Build on proven foundations                                    |
+| 5   | MCP tools (both scoping demos) + guardrails via gateway                                         | Required-tool integrations                                     |
+| 6   | The ONE demo screen + receipt display                                                           | Design once, correctly, knowing exactly what to show           |
+| 7   | Polish chaos controls + record demo                                                             | The ~60%-of-score part gets dedicated time                     |
 
 ---
 
@@ -208,7 +216,7 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 - **Honest degradation must look visibly different from a plain error** — hence the
   side-by-side vs a naive agent in scene 4.
 - **Cap retries.** Infinite retry is itself a resilience failure AND burns gateway-request budget.
-- **Judge self-rating:** idea ~7.5–8/10; final lands 6–9 *entirely* on execution + demo reliability.
+- **Judge self-rating:** idea ~7.5–8/10; final lands 6–9 _entirely_ on execution + demo reliability.
 
 ---
 
