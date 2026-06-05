@@ -21,3 +21,9 @@ yarn-error.log*
 # --- Slice checkpoint store (step 3 vertical slice) ---
 apps/backend/.slice_checkpoints.sqlite
 apps/backend/.slice_checkpoints.sqlite-journal
+
+# --- Real Q&A graph checkpoint store (step 4) ---
+apps/backend/.qa_checkpoints.sqlite
+apps/backend/.qa_checkpoints.sqlite-journal
+apps/backend/.qa_checkpoints.sqlite-shm
+apps/backend/.qa_checkpoints.sqlite-wal

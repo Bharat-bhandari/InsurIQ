@@ -117,9 +117,15 @@ LangGraph agent. We do.
 **Working fallback chain (until Claude clears):**
 `us.meta.llama3-3-70b-instruct` (primary) → `us.amazon.nova-pro` → `us.amazon.nova-micro` → `openai.gpt-oss-120b`. 3+ providers = real cross-provider story.
 
-**Orchestration tier — also PROVEN now (Step 3 slice, see A13):** tool-fail →
-honest-degradation branch, and real-kill (`os._exit`) crash → checkpoint-resume
-with no tool re-run.
+**Orchestration tier — PROVEN (Step 3 slice + Step 4 real graph, see A13):** tool-fail →
+honest-degradation branch, real-kill (`os._exit`) crash → checkpoint-resume
+with no tool re-run, AND the deterministic grounding gate (drop-and-note /
+regenerate / degrade) all working end-to-end in the real graph.
+
+**Tier-1 fallback seen firing in the wild (not staged):** during Step-4 testing a
+synthesis call resolved to `us.deepseek.r1` instead of the Llama primary (primary
+rate-limited/hiccuped) and the structured grounded output still came back valid.
+Real cross-model failover, mid-run, with grounding intact.
 
 **Checkpointer learning (hard-won, environment-specific — a fresh session MUST know this):**
 - Stack: `langgraph 1.1.3`, `langgraph-checkpoint 4.1.1`, `langgraph-checkpoint-sqlite 3.1.0`, `aiosqlite 0.22.1`.
@@ -192,12 +198,12 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 
 - ✅ Seed `Policy` fixture (one Niva Bupa object, hand-assembled once) — DONE
 - ✅ Vertical slice (chaos toggle → tool-fail branch → checkpoint-resume) — DONE
-- LangGraph Q&A graph: plan → tool → synthesize → grounding gate; with checkpointer + one conditional branch (Step 4 — promote the slice)
-- MCP tools (read-only) + BOTH scoping demos
-- Guardrails: input (PII/injection, gateway) + output (grounding node, ours)
-- **Chaos controls** — toggle each failure on demand (pre-broken virtual model trick) — slice has all 4 toggles wired (`break_model` stubbed)
-- Per-query resilience receipt — slice emits a basic events log already
-- **ONE demo screen** (Q&A + citations + chaos toggles + receipt) — design comp done, not yet wired
+- ✅ LangGraph Q&A graph: plan → tools → synthesize → grounding gate; checkpointer + branches — DONE (Step 4)
+- MCP tools (read-only) + BOTH scoping demos — Step 5
+- Guardrails: input (PII/injection, gateway) — Step 5; output grounding node — ✅ DONE (Step 4)
+- **Chaos controls** — all 4 toggles wired; `break_model` still stubbed (needs the gateway chaos virtual model — Step 5)
+- Per-query resilience receipt — ✅ real receipt emitting (resolved_model, tool_attempts, grounding verdict, regenerate_count, checkpoint_resumed, events)
+- **ONE demo screen** (Q&A + citations + chaos toggles + receipt) — design comp done, not yet wired (Step 6)
 
 **OUT (explicitly NOT this week — remains real InsurIQ future, untouched):**
 
@@ -214,8 +220,8 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 | 1   | Update CONTEXT.md                                                                               | ✅ DONE (this file)                                            |
 | 2   | Seed `Policy` fixture                                                                           | ✅ DONE — built + validated (`src/fixtures/`)                  |
 | 3   | **Vertical slice: chaos toggle → tool-fail branch → checkpoint resume** (CLI only)              | ✅ DONE — both unknowns proven (`src/slice/`)                  |
-| 4   | Real LangGraph Q&A graph + grounding gate                                                       | ◀ NEXT — build on proven foundations                          |
-| 5   | MCP tools (both scoping demos) + guardrails via gateway                                         | Required-tool integrations                                     |
+| 4   | Real LangGraph Q&A graph + grounding gate                                                       | ✅ DONE — agent works end-to-end (`src/graphs/`, `src/nodes/`)  |
+| 5   | MCP tools (both scoping demos) + guardrails via gateway + break-model chaos virtual model       | ◀ NEXT — required-tool integrations                            |
 | 6   | The ONE demo screen + receipt display                                                           | Design once, correctly, knowing exactly what to show           |
 | 7   | Polish chaos controls + record demo                                                             | The ~60%-of-score part gets dedicated time                     |
 
@@ -245,9 +251,16 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 - `src/{graphs,llms,nodes,states}` — proven backend layout. Keep it.
 - LLM layer (`src/llms/`) gets repointed at the TFY gateway virtual model `resilient-agent`
   (was Groq direct) — one change, every node inherits fallback.
-- `src/fixtures/` — `_builders.py` (validator-safe Evidence constructors: `span`, `verified`, `flagged_unknown`), `niva_bupa_seed.py` (exports `NIVA_BUPA_POLICY`), `validate.py` (constructs + prints status-count summary; run `python -m src.fixtures.validate`).
-- `src/slice/` — Step-3 spike (`state`, `chaos`, `tools`, `nodes`, `graph`, `run`). Hardens into the real graph in Step 4; the chaos module + retry wrapper + checkpointer setup carry forward, the stubbed synthesis gets replaced by a real gateway call + grounding gate.
-- Checkpointer deps added: `langgraph-checkpoint-sqlite` (+ `aiosqlite`). Sqlite file `apps/backend/.slice_checkpoints.sqlite*` is gitignored.
+- `src/fixtures/` — `_builders.py` (validator-safe Evidence constructors: `span`, `verified`, `flagged_unknown`), `niva_bupa_seed.py` (exports `NIVA_BUPA_POLICY`), `validate.py` (run `python -m src.fixtures.validate`).
+- `src/slice/` — Step-3 spike (reference only now; the real graph lives in `src/graphs/`).
+- `src/chaos.py` — canonical chaos controller (promoted from the slice). 4 toggles: `fail_tool`, `fail_tool_once`, `crash_after_tools`, `break_model` (stubbed until Step 5).
+- `src/llms/gateway.py` — OpenAI-compatible client at the TFY gateway. `chat()` (plain) + `chat_json()` (Pydantic structured output with one bounded repair pass). Env: `TFY_BASE_URL`, `TFY_API_KEY`, `TFY_MODEL`.
+- `src/tools/registry.py` — 4 read-only tools returning keyed-Evidence `{key, value, status, span, notes}`; `_wrap()` adds chaos hook + proof-of-execution print; `call_tool_with_retry` (max 2).
+- `src/nodes/synthesize.py` — `run_synthesis()` → `SynthesisAnswer {lede, lede_cites, claims[{text, cites}]}`. ONE-KEY-PER-CITE contract + deterministic **cite-guard** (splits multi-key cites, prefers verified for the lede) before any model repair.
+- `src/nodes/grounding_gate.py` — pure-function `evaluate()` → `GateVerdict{action ∈ PASS/DROP_AND_NOTE/REGENERATE/DEGRADE}`. "Resolve the key, check the enum"; grounded = `{verified, user_corrected}`.
+- `src/graphs/qa_graph.py` + `run.py` — the wired graph; SqliteSaver at `apps/backend/.qa_checkpoints.sqlite` (gitignored) + `durability="sync"`.
+- `scripts/` — `smoke_gateway.py`, `prove_synthesis.py`, `prove_grounding_gate.py` (isolation harnesses).
+- Checkpointer deps: `langgraph-checkpoint-sqlite` (+ `aiosqlite`). Sqlite files `apps/backend/.*_checkpoints.sqlite*` gitignored.
 
 ---
 
@@ -258,3 +271,4 @@ resume yes/no · which guardrails fired · total latency. End the demo on this.
 - **2026-06-03** — **PIVOT:** hackathon project = **PolicyDesk**, a resilient Q&A tier over a **SEEDED** `Policy` object. Extraction pipeline explicitly OUT of scope. Adopted **two-tier resilience** framing (gateway = config; orchestration = our code). Orchestration tier (tool-fail honest degradation, checkpoint resume, grounding gate) is the differentiator vs prior winners (Aegis/Unsinkable left stateful agents open). Both MCP scoping demos (write-scope denial + PII read-scope denial). Build order is risk-first: seed → vertical-slice de-risk → graph → MCP/guardrails → one demo screen → polish+record.
 - **2026-06-04** — **Seed fixture DONE.** `NIVA_BUPA_POLICY` hand-assembled in `src/fixtures/` from the real Niva Bupa ReAssure 2.0 PDF (policy 34884769202601). Tier-A verbatim spans for the demo-critical facts (24mo specific-disease incl. knee/joint replacement, 36mo PED, 'longer applies' meta-rule 5.1.2(c), proportionate-deduction 6.2.4(d), schedule values, LAYER_JOIN resolved facts). Honest `FLAGGED_UNKNOWN`s where the policy is silent (room-rent cap, Cataract sub-limit) — these double as real hooks for the degradation scene. `validate.py` constructs cleanly; all Evidence validators pass. CAVEAT: real member names sit in schedule `span.text` — scrub to neutral placeholders before recording/public push (per §6 PII).
 - **2026-06-04** — **Step 3 (vertical slice) DONE.** Both Tier-2 unknowns proven on a 5-node CLI graph (`src/slice/`): (1) tool-fail → bounded retry (max 2) → honest-degradation branch; (2) real-kill (`os._exit(1)`) crash → SQLite checkpoint → resume with the tool NOT re-run (proven by the single `[call_tool]` print across both commands). Key environment learning: `durability="sync"` required (LangGraph 1.x defaults async → would lose the pre-crash checkpoint). Resume = `stream(None, same thread_id)`. Bonus `--fail-tool-once` transient mode also works (recovers on attempt 2). Chaos module has all 4 toggles; `break_model` stubbed for Step 4. Verified against the actual files — resume is a true resume, not a fresh run.
+- **2026-06-04** — **Step 4 (real Q&A graph) DONE.** Promoted the slice into the canonical layout (`src/llms`, `src/tools`, `src/nodes`, `src/graphs`). Real synthesis via the gateway `resilient-agent` virtual model (Tier-1 fallback now live for the whole graph — observed failing over to DeepSeek R1 mid-test with grounding intact). Deterministic grounding gate (resolve-key-check-enum; grounded = verified/user_corrected) with locked **drop-and-note** policy: non-lede ungrounded claim → drop + honest note; ungrounded lede → regenerate (max 2) → degrade. All 6 end-to-end scenarios pass (happy/PASS, `--fail-tool`/degrade, combined-question, `--crash-after-tools`+resume with zero tool re-run, `--fail-tool-once`/recover). Isolation harnesses green (`prove_synthesis` 5/5 valid keys; `prove_grounding_gate` a/b/c). **Fix applied:** model sometimes packed multiple keys into one `cites` (e.g. `"ev_specific_wait,ev_room_rent_cap"`) → gate correctly rejected but over-degraded an answerable combined question. Added a deterministic **cite-guard** in synthesis (split multi-key cites, prefer verified for the lede; one-shot model repair only if split fails). Gate left untouched. Combined question now correctly DROP_AND_NOTEs the unverifiable half instead of full-degrading. **Re-verify CONFIRMED:** combined question lands on `drop_and_note` (lede `ev_specific_wait` verified + cited 5.1.2 p37; room-rent cap dropped with honest note; `regenerate_count=0`), reproduced across two runs that resolved to DeepSeek R1 and Llama-70B respectively — grounding behavior identical across model failover. **Step 4 fully closed.**
