@@ -12,6 +12,21 @@ services:
       - "127.0.0.1:8082:8082"
     restart: unless-stopped
 
+  # Step 5.2 SPIKE — PolicyDesk MCP server. REUSES the backend image (same build
+  # context) with a different command, so it shares the backend's Python env and
+  # has src.* on its path. THIN wrapper: exposes one tool (get_waiting_periods)
+  # over SSE. No chaos/retry/secrets here — resilience stays in the graph (§A4).
+  mcp:
+    build:
+      context: ./apps/backend
+    command: ["python", "-m", "src.mcp_server.server"]
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8081
+    ports:
+      - "127.0.0.1:8081:8081"
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./apps/frontend

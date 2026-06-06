@@ -37,6 +37,7 @@ from typing import Any, Callable
 from src.chaos import CHAOS
 from src.fixtures.niva_bupa_seed import NIVA_BUPA_POLICY
 from src.states.evidence import Evidence
+from src.tools.mcp_client import fetch_via_mcp, use_mcp_for
 
 MAX_TOOL_ATTEMPTS = 2
 
@@ -99,6 +100,20 @@ def _get_waiting_periods_body() -> dict[str, Any]:
         "initial_waiting_days": _keyed("ev_initial_wait", wp.initial_waiting_days),
         "longer_waiting_rule": _keyed("ev_longer_rule", wp.longer_waiting_rule),
     }
+
+
+def _get_waiting_periods_dispatch() -> dict[str, Any]:
+    """Route get_waiting_periods to the MCP Gateway when USE_MCP_FOR selects it,
+    else run the local body. SAME keyed-Evidence dict either way.
+
+    This runs INSIDE `_wrap`, so by the time we get here the chaos hook and the
+    single proof-of-execution print have already fired, and the call is still
+    inside `call_tool_with_retry`'s bounded-retry envelope. The remote path adds
+    no new resilience of its own — that all stays client-side (CONTEXT.md §A4).
+    """
+    if use_mcp_for("get_waiting_periods"):
+        return fetch_via_mcp("get_waiting_periods")
+    return _get_waiting_periods_body()
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +283,7 @@ def _wrap(name: str, body: Callable[..., dict[str, Any]]):
 
 
 TOOLS: dict[str, Callable[..., dict[str, Any]]] = {
-    "get_waiting_periods": _wrap("get_waiting_periods", _get_waiting_periods_body),
+    "get_waiting_periods": _wrap("get_waiting_periods", _get_waiting_periods_dispatch),
     "resolve_for_user": _wrap("resolve_for_user", _resolve_for_user_body),
     "get_room_rent_rule": _wrap("get_room_rent_rule", _get_room_rent_rule_body),
     "get_sub_limit": _wrap("get_sub_limit", _get_sub_limit_body),
