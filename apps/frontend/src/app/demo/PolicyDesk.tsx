@@ -10,7 +10,7 @@ import type { ChaosState } from "./components/ChaosRail";
 import type { Message, ProseParagraph, AgentMessage } from "./components/ThreadView";
 import type { LogLine, ReceiptData, ClauseInfo } from "./constants";
 import { QUESTIONS, CLAUSES, ANSWERS, RECEIPTS, LOG_SCRIPTS } from "./constants";
-import { askBackend, chaosForMode, API_BASE } from "./api";
+import { askBackend, crashBackend, resumeBackend, chaosForMode, API_BASE } from "./api";
 import type { AskResponse, Claim } from "./api";
 
 const API_BASE_LABEL = API_BASE;
@@ -257,6 +257,11 @@ export default function PolicyDesk() {
   const [logTimestamps, setLogTimestamps] = useState<string[]>([]);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [inputValue, setInputValue] = useState(QUESTIONS.clean);
+  // Crash scene: holds the interrupted thread awaiting /resume. eventCount is
+  // how many resilience events were already logged at crash time, so resume
+  // only appends the new (synthesis-phase) events instead of re-logging.
+  const [crash, setCrash] = useState<{ threadId: string; eventCount: number } | null>(null);
+  const [resuming, setResuming] = useState(false);
 
   const { tick, stamp } = useMockClock();
 
@@ -388,60 +393,58 @@ export default function PolicyDesk() {
     runLive(text, {});
   }, [busy, stamp, runLive]);
 
-  // ---- Crash trigger (client-side mock, Phase 3) ----
+  // ---- Crash trigger (Phase 3 — REAL backend, step 1 of 2) ----
+  // Calls /ask with crash_after_tools: the graph runs the tools, commits the
+  // SQLite checkpoint, then interrupts at crash_point (NO os._exit — the worker
+  // stays alive). We render the honest interrupted state and surface a Resume
+  // affordance. /resume (step 2) finishes the SAME thread from the checkpoint.
   const triggerCrash = useCallback(() => {
     if (busy) return;
     setBusy(true);
+    setCrash(null);
     const text = QUESTIONS.crash;
     setMessages((prev) => [
       ...prev,
       { role: "user" as const, text, timestamp: stamp() },
+      { role: "thinking" as const, label: "Running tools…" },
     ]);
     setInputValue("");
+    addLog({ kind: "info", text: "query received · routing to agent" }, 1);
 
-    // Log pre-crash lines
-    const crashLines = LOG_SCRIPTS.crash_seq;
-    crashLines.slice(0, 3).forEach((l, i) => addLog(l, i === 0 ? 1 : 1));
-
-    // Show thinking briefly, then interrupted, then resumed
-    setMessages((prev) => [
-      ...prev,
-      { role: "thinking" as const, label: "Synthesizing answer…" },
-    ]);
-
-    setTimeout(() => {
-      // Remove thinking, show interrupted
-      setMessages((prev) => {
-        const without = prev.filter((m) => m.role !== "thinking");
-        const a = ANSWERS.crash;
+    crashBackend(text)
+      .then((data) => {
+        setMessages((prev) => prev.filter((m) => m.role !== "thinking"));
+        // Real pre-crash events straight off the partial receipt.
+        renderRealEvents(data.partial_receipt.events || []);
+        addLog(
+          { kind: "warn", text: "process crashed after tool calls — checkpoint saved" },
+          1,
+        );
+        const tools = Object.keys(data.partial_receipt.tool_attempts || {});
         const interruptedMsg: AgentMessage = {
           role: "agent",
           variant: "crash-interrupted",
-          lede: a.lede,
-          prose: parseProse(a.partial || []),
+          lede: "Answering…",
+          prose: [],
           sources: "",
-          model: a.model,
+          model: { kind: "primary", resolved: "" },
+          interruptedTools: tools,
         };
-        return [...without, interruptedMsg];
-      });
-      setStatusMode("degraded");
-    }, 900);
-
-    // Recovery log lines
-    setTimeout(() => {
-      crashLines.slice(3).forEach((l, i) => addLog(l, i === 0 ? 1 : l.indent ? 0 : 1));
-    }, 1600);
-
-    // Replace interrupted with full resumed answer
-    setTimeout(() => {
-      setStatusMode("recovering");
-      setMessages((prev) => {
-        // Remove the interrupted message (last agent message)
-        const idx = prev.findLastIndex(
-          (m) => m.role === "agent" && (m as AgentMessage).variant === "crash-interrupted",
+        setMessages((prev) => [...prev, interruptedMsg]);
+        setStatusMode("degraded");
+        setCrash({
+          threadId: data.thread_id,
+          eventCount: (data.partial_receipt.events || []).length,
+        });
+        setBusy(false);
+      })
+      .catch((err) => {
+        // Safety net: backend unreachable → cached crash mock, clearly marked.
+        setMessages((prev) => prev.filter((m) => m.role !== "thinking"));
+        addLog(
+          { kind: "err", text: `backend unreachable (${err}) — showing cached crash demo` },
+          1,
         );
-        if (idx < 0) return prev;
-
         const a = ANSWERS.crash;
         const resumedMsg: AgentMessage = {
           role: "agent",
@@ -451,19 +454,80 @@ export default function PolicyDesk() {
           sources: a.sources,
           model: a.model,
           resumeBanner: a.resume,
+          cached: true,
+          cachedReason: `Could not reach ${API_BASE_LABEL} (${err}).`,
         };
-        const next = [...prev];
-        next[idx] = resumedMsg;
-        return next;
-      });
-      setReceipt(RECEIPTS.crash);
-
-      setTimeout(() => {
+        setMessages((prev) => [...prev, resumedMsg]);
+        setReceipt(RECEIPTS.crash);
         setBusy(false);
         refreshStatusFromChaos();
-      }, 900);
-    }, 2200);
-  }, [busy, stamp, addLog, refreshStatusFromChaos]);
+      });
+  }, [busy, stamp, addLog, renderRealEvents, refreshStatusFromChaos]);
+
+  // ---- Resume from checkpoint (Phase 3 — REAL backend, step 2 of 2) ----
+  const resumeCrash = useCallback(() => {
+    if (!crash || resuming) return;
+    const { threadId, eventCount } = crash;
+    setResuming(true);
+    setStatusMode("recovering");
+    addLog({ kind: "ok", text: "checkpoint found → resuming at synthesis" }, 1);
+    // Swap the interrupted message for a thinking indicator.
+    setMessages((prev) => [
+      ...prev.filter(
+        (m) => !(m.role === "agent" && (m as AgentMessage).variant === "crash-interrupted"),
+      ),
+      { role: "thinking" as const, label: "Resuming from checkpoint…" },
+    ]);
+
+    resumeBackend(threadId)
+      .then((data) => {
+        setMessages((prev) => prev.filter((m) => m.role !== "thinking"));
+        // Only the NEW (synthesis-phase) events — the tool events were already
+        // logged at crash time. This visibly proves no tool re-ran.
+        renderRealEvents((data.receipt?.events || []).slice(eventCount));
+        addLog({ kind: "ok", text: "answer completed · no work repeated" }, 1);
+
+        const agentMsg = buildLiveAgentMessage(data);
+        if (data.receipt?.checkpoint_resumed) {
+          agentMsg.variant = "crash-resumed";
+          agentMsg.resumeBanner = {
+            title: "Resumed from checkpoint — no work repeated",
+            sub: "Process crashed after the tool calls completed. Resumed at synthesis; the tools were not re-run.",
+          };
+        }
+        setMessages((prev) => [...prev, agentMsg]);
+        setReceipt(buildReceiptData(data, QUESTIONS.crash));
+        setCrash(null);
+        setResuming(false);
+        setBusy(false);
+        refreshStatusFromChaos();
+      })
+      .catch((err) => {
+        setMessages((prev) => prev.filter((m) => m.role !== "thinking"));
+        addLog(
+          { kind: "err", text: `resume failed (${err}) — showing cached crash demo` },
+          1,
+        );
+        const a = ANSWERS.crash;
+        const resumedMsg: AgentMessage = {
+          role: "agent",
+          variant: "crash-resumed",
+          lede: a.lede,
+          prose: parseProse(a.paras),
+          sources: a.sources,
+          model: a.model,
+          resumeBanner: a.resume,
+          cached: true,
+          cachedReason: `Could not reach ${API_BASE_LABEL} (${err}).`,
+        };
+        setMessages((prev) => [...prev, resumedMsg]);
+        setReceipt(RECEIPTS.crash);
+        setCrash(null);
+        setResuming(false);
+        setBusy(false);
+        refreshStatusFromChaos();
+      });
+  }, [crash, resuming, addLog, renderRealEvents, refreshStatusFromChaos]);
 
   // ---- Toggle chaos ----
   const toggleChaos = useCallback(
@@ -528,6 +592,8 @@ export default function PolicyDesk() {
           onInputChange={setInputValue}
           onSend={send}
           busy={busy}
+          onResume={crash ? resumeCrash : undefined}
+          resuming={resuming}
         />
         <ChaosRail
           chaos={chaos}

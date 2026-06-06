@@ -75,6 +75,21 @@ export interface AskResponse {
   latency_ms: number;
 }
 
+// Returned by /ask when chaos.crash_after_tools is set: the graph halted at
+// crash_point (tools done + checkpointed, synthesis NOT run). Resume with /resume.
+export interface CrashResponse {
+  thread_id: string;
+  interrupted: true;
+  partial_receipt: {
+    tool_status?: string;
+    tool_attempts: Record<string, number>;
+    events: string[];
+    checkpoint_committed: boolean;
+  };
+  message: string;
+  latency_ms: number;
+}
+
 // ---- Chaos mapping (matches reference app.js exactly) ----
 
 export function chaosForMode(mode: string): ChaosPayload {
@@ -93,6 +108,30 @@ export async function askBackend(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, chaos }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// Crash scene step 1: /ask with crash_after_tools → tools run + checkpoint,
+// then the graph interrupts before synthesis. Worker stays alive.
+export async function crashBackend(question: string): Promise<CrashResponse> {
+  const res = await fetch(`${API_BASE}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, chaos: { crash_after_tools: true } }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// Crash scene step 2: /resume the same thread → synthesis + gate from the
+// committed checkpoint. Tools are NOT re-run. Returns the full answer shape.
+export async function resumeBackend(threadId: string): Promise<AskResponse> {
+  const res = await fetch(`${API_BASE}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ thread_id: threadId }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();

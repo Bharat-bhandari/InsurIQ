@@ -27,6 +27,8 @@ export interface AgentMessage {
   model: { kind: "primary" | "failover"; resolved: string; down?: string };
   degradedNote?: string;
   resumeBanner?: { title: string; sub: string };
+  // crash-interrupted state: tools completed before the process stopped
+  interruptedTools?: string[];
   // cached fallback (backend unreachable) — must never masquerade as a live answer
   cached?: boolean;
   cachedReason?: string;
@@ -321,14 +323,60 @@ function AnswerBlock({ msg }: { msg: AgentMessage }) {
 
 // ---- Interrupted answer (crash partial) ----
 
-function InterruptedAnswer({ msg }: { msg: AgentMessage }) {
+function InterruptedAnswer({
+  msg,
+  onResume,
+  resuming,
+}: {
+  msg: AgentMessage;
+  onResume?: () => void;
+  resuming?: boolean;
+}) {
+  const tools = msg.interruptedTools || [];
   return (
     <div className="msg agent">
-      <div className="answer answer--crash interrupted">
+      <div className="answer answer--crash">
         <div className="lede">{msg.lede}</div>
-        <ProseWithCitations paragraphs={msg.prose} />
-        <div className="interrupted-tag">
-          ● process interrupted — synthesis incomplete
+        <div className="callout-gap">
+          <svg
+            className="ico"
+            width={17}
+            height={17}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.9}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 9v4M12 17h.01" />
+            <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          </svg>
+          <div className="body">
+            <b>Process crashed after tool calls. Checkpoint saved.</b>
+            <span style={{ display: "block", marginTop: 4 }}>
+              {tools.length
+                ? `Tools completed and checkpointed: ${tools
+                    .map((t) => t)
+                    .join(", ")}. Synthesis never ran.`
+                : "Tool results were checkpointed before the crash. Synthesis never ran."}
+            </span>
+          </div>
+        </div>
+        <div className="answer-meta">
+          <span className="interrupted-tag">
+            ● process interrupted — synthesis incomplete
+          </span>
+          <span className="meta-spacer" />
+          {onResume && (
+            <button
+              className="trigger-btn"
+              disabled={resuming}
+              onClick={onResume}
+            >
+              {resuming ? "Resuming…" : "Resume from checkpoint"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -343,6 +391,8 @@ interface ThreadViewProps {
   onInputChange: (v: string) => void;
   onSend: () => void;
   busy: boolean;
+  onResume?: () => void;
+  resuming?: boolean;
 }
 
 export default function ThreadView({
@@ -351,6 +401,8 @@ export default function ThreadView({
   onInputChange,
   onSend,
   busy,
+  onResume,
+  resuming,
 }: ThreadViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -418,7 +470,14 @@ export default function ThreadView({
               return <BlockedAnswer key={i} msg={msg} />;
             }
             if (msg.variant === "crash-interrupted") {
-              return <InterruptedAnswer key={i} msg={msg} />;
+              return (
+                <InterruptedAnswer
+                  key={i}
+                  msg={msg}
+                  onResume={onResume}
+                  resuming={resuming}
+                />
+              );
             }
             return <AnswerBlock key={i} msg={msg} />;
           })}
