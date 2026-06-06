@@ -1,5 +1,5 @@
 from langgraph.graph import StateGraph, START, END
-from apps.backend.src.states.evidence import InsuranceState
+from src.states.evidence import InsuranceState
 from src.nodes.insurance_node import InsuranceNode
 
 

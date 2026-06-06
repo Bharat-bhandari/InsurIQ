@@ -1,6 +1,4 @@
-from src.llms.groqllm import GroqLLM
-from src.graphs.graph_builder import GraphBuilder   
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import uvicorn
@@ -27,24 +25,9 @@ app.add_middleware(
 )
 
 
-@app.post("/api/generate_summary")
-async def generate_summary(request: Request):
-    data= await request.json()
-    policy_name=data.get("policy_name")
-
-    if not policy_name:
-        return {"error": "policy_name is required"}
-    
-    ## Initialize the GroqLLM and get the LLM instance
-    groq_llm=GroqLLM()
-    llm=groq_llm.get_llm()
-
-    ## get the graph
-    graph_builder=GraphBuilder(llm)
-    graph=graph_builder.setup_graph()
-    state=graph.invoke({"policy_summary": {"policy_name": policy_name}})
-
-    return {"data":state}
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "policydesk-backend"}
 
 
 if __name__ == "__main__":

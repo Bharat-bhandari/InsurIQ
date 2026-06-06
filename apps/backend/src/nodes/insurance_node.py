@@ -1,4 +1,4 @@
-from apps.backend.src.states.evidence import InsuranceState,PolicySummary
+from src.states.evidence import InsuranceState,PolicySummary
 
 class InsuranceNode:
     """
