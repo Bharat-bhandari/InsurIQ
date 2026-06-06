@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.llms.gateway import GuardrailBlocked
 from src.nodes.synthesize import collect_evidence_records, run_synthesis
 from src.states.qa_state import QAState
 
@@ -22,9 +23,27 @@ def synthesize(state: QAState) -> dict[str, Any]:
     strict = bool(state.get("needs_strict"))
     regen_used = int(state.get("regenerate_count") or 0)
 
-    parsed, result, records, guard_events = run_synthesis(
-        question, tool_results, strict=strict
-    )
+    try:
+        parsed, result, records, guard_events = run_synthesis(
+            question, tool_results, strict=strict
+        )
+    except GuardrailBlocked as e:
+        first = e.integrations[0] if e.integrations else "unknown"
+        return {
+            "answer": (
+                f"That request was blocked by an input safety guardrail "
+                f"({first}). I can only help with questions about your "
+                f"insurance policy."
+            ),
+            "guardrail_blocked": {
+                "stage": e.stage,
+                "integrations": e.integrations,
+                "action": "blocked",
+            },
+            "resilience_events": [
+                f"guardrail: input {first} → blocked (request refused honestly)"
+            ],
+        }
 
     new_regen = regen_used + 1 if strict else regen_used
     events: list[str] = list(guard_events)

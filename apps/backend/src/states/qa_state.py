@@ -37,6 +37,7 @@ class QAState(TypedDict, total=False):
     # Final
     answer: str | None
     receipt: dict[str, Any]
+    guardrail_blocked: dict[str, Any] | None  # set only when a guardrail fired
 
     # Append-only events log. `add` reducer concatenates per-node returns.
     resilience_events: Annotated[list[str], add]

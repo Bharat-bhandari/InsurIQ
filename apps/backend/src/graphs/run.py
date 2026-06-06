@@ -36,7 +36,7 @@ def _has_existing_checkpoint(graph, thread_id: str) -> bool:
     return bool(state.values) or bool(state.next)
 
 
-def _build_receipt(final_state: dict[str, Any], *, thread_id: str, resumed: bool) -> dict[str, Any]:
+def _build_receipt(final_state: dict[str, Any], *, thread_id: str, resumed: bool, break_model: bool = False) -> dict[str, Any]:
     """The Aegis-style resilience receipt (CONTEXT.md §A7).
 
     Includes resolved model (from gateway response metadata), per-tool retry
@@ -45,10 +45,11 @@ def _build_receipt(final_state: dict[str, Any], *, thread_id: str, resumed: bool
     """
     synth_meta = final_state.get("synthesis_meta") or {}
     gate_verdict = final_state.get("gate_verdict") or {}
-    return {
+    receipt: dict[str, Any] = {
         "thread_id": thread_id,
         "checkpoint_resumed": resumed,
         "resolved_model": synth_meta.get("resolved_model"),
+        "guardrail_blocked": final_state.get("guardrail_blocked"),
         "tool_status": final_state.get("tool_status"),
         "tool_attempts": final_state.get("tool_attempts") or {},
         "grounding": {
@@ -62,6 +63,9 @@ def _build_receipt(final_state: dict[str, Any], *, thread_id: str, resumed: bool
         "regenerate_count": int(final_state.get("regenerate_count") or 0),
         "events": list(final_state.get("resilience_events") or []),
     }
+    if break_model:
+        receipt["chaos_mode"] = "break_model"
+    return receipt
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fail-tool", action="store_true")
     parser.add_argument("--fail-tool-once", action="store_true")
     parser.add_argument("--crash-after-tools", action="store_true")
+    parser.add_argument("--break-model", action="store_true")
     parser.add_argument("--thread-id", default=None)
     parser.add_argument(
         "--receipt-json",
@@ -82,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         fail_tool=args.fail_tool,
         fail_tool_once=args.fail_tool_once,
         crash_after_tools=args.crash_after_tools,
+        break_model=args.break_model,
     )
 
     thread_id = args.thread_id or f"qa-{secrets.token_hex(4)}"
@@ -125,10 +131,15 @@ def main(argv: list[str] | None = None) -> int:
     print("[answer]")
     print(final_state.get("answer") or "(no answer produced)")
 
-    receipt = _build_receipt(final_state, thread_id=thread_id, resumed=resuming)
+    receipt = _build_receipt(final_state, thread_id=thread_id, resumed=resuming, break_model=args.break_model)
     print()
     print("[receipt]")
     print(f"  resolved_model     : {receipt['resolved_model']}")
+    if "chaos_mode" in receipt:
+        print(f"  chaos_mode         : {receipt['chaos_mode']}")
+    if receipt.get("guardrail_blocked"):
+        gb = receipt["guardrail_blocked"]
+        print(f"  guardrail_blocked  : stage={gb['stage']} integrations={gb['integrations']} action={gb['action']}")
     print(f"  tool_status        : {receipt['tool_status']}")
     print(f"  tool_attempts      : {receipt['tool_attempts']}")
     print(f"  grounding.action   : {receipt['grounding']['action']}")

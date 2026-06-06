@@ -31,11 +31,70 @@ from functools import lru_cache
 from typing import Any
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 from pydantic import BaseModel, ValidationError
+
+from src.chaos import CHAOS
 
 # Load .env once at import time. The backend's .env sits next to pyproject.toml.
 load_dotenv()
+
+
+# ---------------------------------------------------------------------------
+# Guardrail exception
+# ---------------------------------------------------------------------------
+
+
+class GuardrailBlocked(Exception):
+    """Raised when the TrueFoundry gateway rejects a request via an input guardrail.
+
+    The gateway returns HTTP 400 with error.type == "guardrail_checks_failed".
+    This is an expected, deterministic outcome — do NOT retry; route to an
+    honest refusal instead.
+    """
+
+    def __init__(self, stage: str, integrations: list[str], message: str) -> None:
+        self.stage = stage
+        self.integrations = integrations
+        self.message = message
+        super().__init__(f"Guardrail blocked [{stage}]: {integrations} — {message}")
+
+
+def _try_parse_guardrail(e: BadRequestError) -> GuardrailBlocked | None:
+    """Return a GuardrailBlocked if the 400 is a guardrail block; else None."""
+    try:
+        body: Any = (
+            e.response.json()
+            if (hasattr(e, "response") and e.response is not None)
+            else (e.body or {})
+        )
+    except Exception:
+        return None
+
+    if not isinstance(body, dict):
+        return None
+
+    error_info = body.get("error") or {}
+    error_type = error_info.get("type", "") if isinstance(error_info, dict) else ""
+    is_block = (
+        body.get("error_origin_level") == "guardrails_input"
+        or error_type == "guardrail_checks_failed"
+    )
+    if not is_block:
+        return None
+
+    guardrail_checks = body.get("guardrail_checks") or {}
+    input_guardrails = guardrail_checks.get("input_guardrails") or []
+    integrations = [
+        g.get("guardrail_integration", "unknown")
+        for g in input_guardrails
+        if isinstance(g, dict) and g.get("result") == "failed"
+    ]
+    return GuardrailBlocked(
+        stage="input",
+        integrations=integrations,
+        message=body.get("message", "Input guardrail check failed."),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +141,13 @@ def default_model() -> str:
     return _require("TFY_MODEL")
 
 
+def _active_model() -> str:
+    """Return the chaos model group when break_model is armed, else the normal model."""
+    if CHAOS.break_model:
+        return _require("TFY_MODEL_CHAOS")
+    return _require("TFY_MODEL")
+
+
 # ---------------------------------------------------------------------------
 # Plain chat
 # ---------------------------------------------------------------------------
@@ -110,12 +176,18 @@ def chat(
     assistant text plus enough metadata for the resilience receipt.
     """
     client = gateway_client()
-    resp = client.chat.completions.create(
-        model=model or default_model(),
-        messages=messages,  # type: ignore[arg-type]
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    try:
+        resp = client.chat.completions.create(
+            model=model or _active_model(),
+            messages=messages,  # type: ignore[arg-type]
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except BadRequestError as e:
+        blocked = _try_parse_guardrail(e)
+        if blocked is not None:
+            raise blocked from e
+        raise
     choice = resp.choices[0]
     return ChatResult(
         text=(choice.message.content or "").strip(),
@@ -198,13 +270,19 @@ def chat_json(
                 }
             )
 
-        resp = client.chat.completions.create(
-            model=model or default_model(),
-            messages=attempt_messages,  # type: ignore[arg-type]
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"},
-        )
+        try:
+            resp = client.chat.completions.create(
+                model=model or _active_model(),
+                messages=attempt_messages,  # type: ignore[arg-type]
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+        except BadRequestError as e:
+            blocked = _try_parse_guardrail(e)
+            if blocked is not None:
+                raise blocked from e
+            raise
         choice = resp.choices[0]
         text = _extract_json_text(choice.message.content)
         last_raw = resp

@@ -44,6 +44,13 @@ def _format_finalized_answer(
 
 
 def grounding_gate(state: QAState) -> dict[str, Any]:
+    # Guardrail block: answer is already set by synthesize; route straight to END.
+    if state.get("guardrail_blocked"):
+        return {
+            "gate_verdict": {"action": GateAction.PASS.value, "reason": "guardrail-blocked"},
+            "resilience_events": ["grounding_gate: bypassed (guardrail block already handled)"],
+        }
+
     synthesis = state.get("synthesis") or {}
     if not synthesis:
         return {
