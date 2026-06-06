@@ -2,9 +2,18 @@
 Execute the planned tool calls and roll the outcomes into one tool_results
 dict + a single `tool_status` flag.
 
-Routing convention (carried from the slice):
-  - ALL planned tools succeed  → tool_status = "ok"
-  - ANY planned tool exhausts retries → tool_status = "degraded"
+Routing convention:
+  - ALL planned tools succeed       → tool_status = "ok",  full results
+  - SOME succeed, some exhaust retry → tool_status = "degraded", PARTIAL results
+                                       kept (the grounding gate then drops the
+                                       claim that needed the failed tool — honest
+                                       drop-and-note, not a blanket failure).
+  - NO tool succeeds                → tool_status = "degraded", results = None
+                                       (routes to the generic honest no-guess).
+
+`tool_status` is the receipt's signal; the next-node routing keys off whether
+ANY usable results survived (see `route_on_tool_status`), so a partial failure
+still reaches synthesis.
 
 Each tool body still calls `CHAOS.maybe_fail_tool(name)` and prints exactly
 one `[tool] ...` line per real execution — that print is the checkpoint-resume
@@ -47,9 +56,17 @@ def call_tools(state: QAState) -> dict[str, Any]:
             )
 
     status = "degraded" if any_degraded else "ok"
+    # Keep partial results when SOME tools succeeded — only blank out when the
+    # whole lookup failed. This is what lets a single failed tool degrade into
+    # an honest drop-and-note instead of a blanket "couldn't verify anything".
+    partial = bool(results) and any_degraded
     return {
-        "tool_results": results if not any_degraded else None,
+        "tool_results": results if results else None,
         "tool_status": status,
         "tool_attempts": attempts,
-        "resilience_events": events + [f"call_tools: aggregate status={status}"],
+        "resilience_events": events
+        + [
+            f"call_tools: aggregate status={status}"
+            + (" (partial results kept → drop-and-note)" if partial else "")
+        ],
     }

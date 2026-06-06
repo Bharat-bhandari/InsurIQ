@@ -31,5 +31,12 @@ def crash_point(state: QAState) -> dict[str, Any]:
 
 
 def route_on_tool_status(state: QAState) -> str:
-    """Branch key for the conditional edge after crash_point."""
-    return "synthesize" if state.get("tool_status") == "ok" else "synthesize_degraded"
+    """Branch key for the conditional edge after crash_point.
+
+    Routes on whether ANY usable tool results survived — not on tool_status —
+    so a PARTIAL failure (some tools ok, one failed) still reaches synthesis and
+    the grounding gate can drop the unverifiable claim (honest drop-and-note).
+    Only a total tool failure (results is None/empty) goes to the generic
+    degraded synthesizer.
+    """
+    return "synthesize" if state.get("tool_results") else "synthesize_degraded"

@@ -27,3 +27,5 @@ apps/backend/.qa_checkpoints.sqlite
 apps/backend/.qa_checkpoints.sqlite-journal
 apps/backend/.qa_checkpoints.sqlite-shm
 apps/backend/.qa_checkpoints.sqlite-wal
+
+insuriq-resilient/

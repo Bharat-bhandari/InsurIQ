@@ -1,33 +1,12 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+"""Backend entrypoint. The FastAPI app (with /health and /ask) lives in
+`src.api.app`; this module just re-exports it so `uvicorn main:app` keeps
+working and adds the local dev runner."""
+
 import os
+
 import uvicorn
 
-app = FastAPI()
-
-
-def _parse_csv_env(name: str, default: str) -> list[str]:
-    raw_value = os.getenv(name, default)
-    return [value.strip() for value in raw_value.split(",") if value.strip()]
-
-
-cors_origins = _parse_csv_env(
-    "CORS_ORIGINS",
-    "http://localhost:3002",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "service": "policydesk-backend"}
+from src.api.app import app  # noqa: F401  (re-exported for `uvicorn main:app`)
 
 
 if __name__ == "__main__":
