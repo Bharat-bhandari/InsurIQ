@@ -145,15 +145,32 @@ def _structured_answer(final_state: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _cors_origins() -> list[str]:
+    """Allowed browser origins, from CORS_ORIGINS (comma-separated).
+
+    MUST be the single source of CORS headers. Earlier the app emitted
+    `Access-Control-Allow-Origin: *` while nginx ALSO added the specific origin,
+    so a browser saw two ACAO headers and rejected the response (`TypeError:
+    Failed to fetch`) — the demo-killer. We now reflect the exact configured
+    origins (never "*"), so the header is valid with credentials and there is
+    one authoritative source. The reverse proxy must NOT add its own CORS headers.
+    """
+    raw = os.getenv("CORS_ORIGINS", "")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    # Local-dev fallback so running without the env still works from the demo.
+    return origins or ["http://localhost:3002", "http://127.0.0.1:3002"]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="PolicyDesk backend")
 
-    # Permissive CORS for local dev: the demo screen opens from file:// (Origin
-    # "null") or a local static server. No credentials are used, so "*" is safe.
+    # Single CORS authority (see _cors_origins). Specific origins + credentials,
+    # never a wildcard — `ACAO: *` with `allow-credentials: true` is itself an
+    # illegal combination that browsers reject.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
+        allow_origins=_cors_origins(),
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )

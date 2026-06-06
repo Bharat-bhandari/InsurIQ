@@ -2,7 +2,7 @@
    PolicyDesk — API client for the /ask endpoint
    ============================================================ */
 
-const API_BASE = (
+export const API_BASE = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8082"
 ).replace(/\/$/, "");
 

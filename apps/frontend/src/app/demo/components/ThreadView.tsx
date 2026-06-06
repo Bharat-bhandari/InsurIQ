@@ -27,6 +27,9 @@ export interface AgentMessage {
   model: { kind: "primary" | "failover"; resolved: string; down?: string };
   degradedNote?: string;
   resumeBanner?: { title: string; sub: string };
+  // cached fallback (backend unreachable) — must never masquerade as a live answer
+  cached?: boolean;
+  cachedReason?: string;
   // blocked state
   blockedText?: string;
   blockedIntegration?: string;
@@ -248,12 +251,46 @@ function BlockedAnswer({ msg }: { msg: AgentMessage }) {
   );
 }
 
+// ---- Cached fallback banner (backend unreachable) ----
+// Loud, unmistakable: a cached mock must NEVER look like a live grounded answer.
+
+function CachedBanner({ reason }: { reason?: string }) {
+  return (
+    <div
+      className="cached-banner"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 12px",
+        marginBottom: 10,
+        borderRadius: 8,
+        background: "#7c2d12",
+        color: "#fff7ed",
+        border: "1px solid #ea580c",
+        fontWeight: 600,
+        fontSize: 13,
+      }}
+    >
+      <span aria-hidden>⚠</span>
+      <span>
+        Showing a CACHED answer — backend unreachable.{" "}
+        <span style={{ fontWeight: 400, opacity: 0.9 }}>
+          {reason || "This is not a live response."}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 // ---- Standard answer rendering ----
 
 function AnswerBlock({ msg }: { msg: AgentMessage }) {
   const isDegraded = msg.variant === "degraded";
   const isCrashResumed = msg.variant === "crash-resumed";
-  const cls = isDegraded
+  const cls = msg.cached
+    ? " answer--cached"
+    : isDegraded
     ? " answer--degraded"
     : isCrashResumed
     ? " answer--crash"
@@ -262,6 +299,7 @@ function AnswerBlock({ msg }: { msg: AgentMessage }) {
   return (
     <div className="msg agent">
       <div className={`answer${cls}`}>
+        {msg.cached && <CachedBanner reason={msg.cachedReason} />}
         {isCrashResumed && msg.resumeBanner && (
           <ResumeBanner title={msg.resumeBanner.title} sub={msg.resumeBanner.sub} />
         )}

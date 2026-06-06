@@ -1,7 +1,7 @@
 """
 PolicyDesk MCP server — Step 5.2 SPIKE (one tool through the MCP Gateway).
 
-Exposes EXACTLY ONE tool, `get_waiting_periods` (no args), over HTTP/SSE so the
+Exposes EXACTLY ONE tool, `get_waiting_periods` (no args), over HTTP so the
 TrueFoundry MCP Gateway (cloud) can reach it over HTTPS. The tool handler is a
 THIN wrapper: it calls the EXISTING `_get_waiting_periods_body()` from
 src.tools.registry and returns the SAME keyed-Evidence dict (CONTRACT 2). It
@@ -9,9 +9,12 @@ does NOT reimplement tool logic, and it does NOT carry chaos or retry — those
 stay client-side in the graph (CONTEXT.md §A4: orchestration-tier resilience is
 our code, the gateway only makes the transport resilient).
 
-Transport: SSE (Starlette ASGI). The MCP endpoint is GET /sse (+ POST
-/messages/); a plain GET /health is added for the reverse proxy. Binds 0.0.0.0,
-port from MCP_PORT (default 8081).
+Transport: STREAMABLE-HTTP (Starlette ASGI). This matches what the TFY MCP
+Gateway and the backend MCP client (StreamableHttpTransport) speak. The MCP
+endpoint is POST /mcp; a plain GET /health is added for the reverse proxy.
+(It previously served SSE at GET /sse, which made every gateway POST → 405
+Method Not Allowed — the MCP transport mismatch.) Binds 0.0.0.0, port from
+MCP_PORT (default 8081).
 
 Run (shares the backend image / Python env):
     uv run python -m src.mcp_server.server
@@ -24,19 +27,23 @@ from typing import Any
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
-from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
 
 from src.tools.registry import _get_waiting_periods_body
 
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("MCP_PORT", "8081"))
 
-# FastMCP holds the tool manifest. host/port only matter for its own stdio/sse
-# runner; we drive uvicorn ourselves so we can add /health alongside the SSE app.
-mcp = FastMCP("policydesk-mcp", host=MCP_HOST, port=MCP_PORT)
+# FastMCP holds the tool manifest. streamable_http_path is the POST endpoint the
+# gateway/client hit; host/port feed FastMCP's own runner but we drive uvicorn
+# ourselves so the /health route ships in the same app.
+mcp = FastMCP(
+    "policydesk-mcp",
+    host=MCP_HOST,
+    port=MCP_PORT,
+    streamable_http_path="/mcp",
+)
 
 
 @mcp.tool(
@@ -55,6 +62,7 @@ def get_waiting_periods() -> dict[str, Any]:
     return _get_waiting_periods_body()
 
 
+@mcp.custom_route("/health", methods=["GET"])
 async def health(_: Request) -> JSONResponse:
     """Liveness probe for the reverse proxy / compose healthcheck."""
     return JSONResponse(
@@ -62,18 +70,21 @@ async def health(_: Request) -> JSONResponse:
     )
 
 
-def build_app() -> Starlette:
-    """SSE MCP app (/sse + /messages/) plus a plain /health route."""
-    return Starlette(
-        routes=[
-            Route("/health", health, methods=["GET"]),
-            Mount("/", app=mcp.sse_app()),
-        ]
-    )
+def build_app():
+    """Streamable-HTTP MCP app (POST /mcp) plus a plain GET /health route.
+
+    `streamable_http_app()` wires the StreamableHTTPSessionManager lifespan into
+    the returned Starlette app and includes the @custom_route handlers, so it can
+    be served directly by uvicorn with the session manager running.
+    """
+    return mcp.streamable_http_app()
 
 
 def main() -> None:
-    print(f"[mcp_server] serving SSE on http://{MCP_HOST}:{MCP_PORT}/sse", flush=True)
+    print(
+        f"[mcp_server] serving streamable-HTTP on http://{MCP_HOST}:{MCP_PORT}/mcp",
+        flush=True,
+    )
     uvicorn.run(build_app(), host=MCP_HOST, port=MCP_PORT)
 
 

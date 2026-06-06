@@ -10,8 +10,10 @@ import type { ChaosState } from "./components/ChaosRail";
 import type { Message, ProseParagraph, AgentMessage } from "./components/ThreadView";
 import type { LogLine, ReceiptData, ClauseInfo } from "./constants";
 import { QUESTIONS, CLAUSES, ANSWERS, RECEIPTS, LOG_SCRIPTS } from "./constants";
-import { askBackend, chaosForMode } from "./api";
+import { askBackend, chaosForMode, API_BASE } from "./api";
 import type { AskResponse, Claim } from "./api";
+
+const API_BASE_LABEL = API_BASE;
 
 // ---- Mock clock (matches reference: reads cleaner in demos) ----
 
@@ -219,7 +221,7 @@ function buildLiveAgentMessage(data: AskResponse): AgentMessage {
 
 // ---- Build cached fallback agent message ----
 
-function buildCachedAgentMessage(stateKey: string): AgentMessage {
+function buildCachedAgentMessage(stateKey: string, reason?: string): AgentMessage {
   const a = ANSWERS[stateKey] || ANSWERS.clean;
   const isDegraded = stateKey === "degraded";
 
@@ -232,6 +234,9 @@ function buildCachedAgentMessage(stateKey: string): AgentMessage {
     sources: a.sources,
     model: a.model,
     degradedNote: a.degradedNote,
+    // Mark loudly so a cached mock can never masquerade as a live grounded answer.
+    cached: true,
+    cachedReason: reason,
   };
 }
 
@@ -334,13 +339,16 @@ export default function PolicyDesk() {
           refreshStatusFromChaos();
         })
         .catch((err) => {
-          // Safety net: backend unreachable → show cached answer
+          // Safety net: backend unreachable → show cached answer, clearly marked.
           setMessages((prev) => prev.filter((m) => m.role !== "thinking"));
           addLog(
             { kind: "err", text: `backend unreachable (${err}) — showing cached answer` },
             1,
           );
-          const cachedMsg = buildCachedAgentMessage("clean");
+          const cachedMsg = buildCachedAgentMessage(
+            "clean",
+            `Could not reach ${API_BASE_LABEL} (${err}).`,
+          );
           setMessages((prev) => [...prev, cachedMsg]);
           setReceipt(RECEIPTS.clean);
           setBusy(false);
