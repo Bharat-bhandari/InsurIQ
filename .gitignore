@@ -29,3 +29,4 @@ apps/backend/.qa_checkpoints.sqlite-shm
 apps/backend/.qa_checkpoints.sqlite-wal
 
 insuriq-resilient-reference-only/
+CONTEXT.md
