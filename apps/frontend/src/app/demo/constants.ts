@@ -59,7 +59,7 @@ export interface ReceiptData {
 // ---- Policy metadata (top bar) ----
 
 export const POLICY = {
-  wordmark: "PolicyDesk",
+  wordmark: "InsurIQ",
   insurer: "Niva Bupa ReAssure 2.0",
   tier: "Platinum+",
   sumInsured: "₹10,00,000",
@@ -96,6 +96,14 @@ export const CLAUSES: Record<string, ClauseInfo> = {
     text: "If any of the specified disease/procedure falls under the waiting period specified for pre-existing diseases, then the longer of the two waiting periods shall apply.",
   },
 };
+
+// ---- Suggestion chips (shown on an empty chat; clicking sends the text) ----
+
+export const SUGGESTIONS: string[] = [
+  "Is knee replacement surgery covered under my policy, and is there a waiting period?",
+  "Is there a sub-limit on cataract surgery under my plan?",
+  "What happens if I'm admitted to a room above my eligible limit?",
+];
 
 // ---- Prefilled questions per mode ----
 

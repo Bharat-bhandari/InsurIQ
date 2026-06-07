@@ -9,25 +9,21 @@ import ChaosRail from "./components/ChaosRail";
 import type { ChaosState } from "./components/ChaosRail";
 import type { Message, ProseParagraph, AgentMessage } from "./components/ThreadView";
 import type { LogLine, ReceiptData, ClauseInfo } from "./constants";
-import { QUESTIONS, CLAUSES, ANSWERS, RECEIPTS, LOG_SCRIPTS } from "./constants";
+import { QUESTIONS, SUGGESTIONS, CLAUSES, ANSWERS, RECEIPTS, LOG_SCRIPTS } from "./constants";
 import { askBackend, crashBackend, resumeBackend, chaosForMode, API_BASE } from "./api";
 import type { AskResponse, Claim } from "./api";
 
 const API_BASE_LABEL = API_BASE;
 
-// ---- Mock clock (matches reference: reads cleaner in demos) ----
+// ---- Real clock: chat bubbles stamp the actual local send/receive time (IST). ----
 
-function useMockClock() {
-  const clock = useRef(new Date(2026, 5, 6, 14, 2, 50));
-  const tick = useCallback((sec: number) => {
-    clock.current = new Date(clock.current.getTime() + sec * 1000);
-  }, []);
-  const stamp = useCallback(() => {
-    const p = (n: number) => String(n).padStart(2, "0");
-    const d = clock.current;
-    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  }, []);
-  return { tick, stamp };
+function nowStampIST(): string {
+  return new Date().toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 // ---- Utility: classify event line kind (from reference) ----
@@ -248,40 +244,32 @@ export default function PolicyDesk() {
   const [chaos, setChaos] = useState<ChaosState>({
     breakModel: false,
     failTool: false,
-    rateLimit: false,
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
   const [statusMode, setStatusMode] = useState<"healthy" | "degraded" | "recovering">("healthy");
   const [logLines, setLogLines] = useState<LogLine[]>([]);
-  const [logTimestamps, setLogTimestamps] = useState<string[]>([]);
+  // Absolute event times (epoch ms); the log renders them as elapsed since queryStart.
+  const [logTimestamps, setLogTimestamps] = useState<number[]>([]);
+  const [queryStart, setQueryStart] = useState<number>(() => Date.now());
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
-  const [inputValue, setInputValue] = useState(QUESTIONS.clean);
+  const [inputValue, setInputValue] = useState("");
   // Crash scene: holds the interrupted thread awaiting /resume. eventCount is
   // how many resilience events were already logged at crash time, so resume
   // only appends the new (synthesis-phase) events instead of re-logging.
   const [crash, setCrash] = useState<{ threadId: string; eventCount: number } | null>(null);
   const [resuming, setResuming] = useState(false);
 
-  const { tick, stamp } = useMockClock();
-
   // ---- Log helpers ----
+  // The `advance` arg is retained for call-site compatibility but ignored:
+  // timestamps are now real wall-clock event times.
   const addLog = useCallback(
     (line: LogLine, advance: number = 1) => {
-      if (advance) tick(advance);
+      void advance;
       setLogLines((prev) => [...prev, line]);
-      setLogTimestamps((prev) => [...prev, stamp()]);
+      setLogTimestamps((prev) => [...prev, Date.now()]);
     },
-    [tick, stamp],
-  );
-
-  const addLogs = useCallback(
-    (lines: LogLine[], baseAdvance: number = 1) => {
-      lines.forEach((l, i) => {
-        addLog(l, i === 0 ? baseAdvance : l.indent ? 0 : 1);
-      });
-    },
-    [addLog],
+    [],
   );
 
   const clearLog = useCallback(() => {
@@ -292,7 +280,7 @@ export default function PolicyDesk() {
   // ---- Status helpers ----
   const refreshStatusFromChaos = useCallback(() => {
     setChaos((c) => {
-      const armed = c.breakModel || c.failTool || c.rateLimit;
+      const armed = c.breakModel || c.failTool;
       setStatusMode(armed ? "degraded" : "healthy");
       return c;
     });
@@ -301,7 +289,7 @@ export default function PolicyDesk() {
   // ---- Mode from chaos ----
   const modeFromChaos = useCallback((): string => {
     if (chaos.failTool) return "degraded";
-    if (chaos.breakModel || chaos.rateLimit) return "fallback";
+    if (chaos.breakModel) return "fallback";
     return "clean";
   }, [chaos]);
 
@@ -364,34 +352,52 @@ export default function PolicyDesk() {
   );
 
   // ---- Send ----
-  const send = useCallback(() => {
-    if (busy) return;
-    const mode = modeFromChaos();
-    const text = inputValue.trim() || QUESTIONS[mode];
-    setBusy(true);
-    setMessages((prev) => [
-      ...prev,
-      { role: "user" as const, text, timestamp: stamp() },
-    ]);
-    setInputValue("");
+  // `submit` is the single send path. `send` (Enter/Send button) reads the
+  // input; `sendChip` fills the input with a suggestion and sends that text.
+  const submit = useCallback(
+    (explicit?: string) => {
+      if (busy) return;
+      const mode = modeFromChaos();
+      const raw = typeof explicit === "string" ? explicit : inputValue;
+      const text = raw.trim() || QUESTIONS[mode];
+      setBusy(true);
+      setQueryStart(Date.now());
+      setMessages((prev) => [
+        ...prev,
+        { role: "user" as const, text, timestamp: nowStampIST() },
+      ]);
+      setInputValue("");
 
-    if (mode !== "clean") setStatusMode("recovering");
-    runLive(text, chaosForMode(mode));
-  }, [busy, modeFromChaos, inputValue, stamp, runLive]);
+      if (mode !== "clean") setStatusMode("recovering");
+      runLive(text, chaosForMode(mode));
+    },
+    [busy, modeFromChaos, inputValue, runLive],
+  );
+
+  const send = useCallback(() => submit(), [submit]);
+
+  const sendChip = useCallback(
+    (text: string) => {
+      setInputValue(text);
+      submit(text);
+    },
+    [submit],
+  );
 
   // ---- Injection trigger ----
   const triggerInjection = useCallback(() => {
     if (busy) return;
     const text = QUESTIONS.injection;
     setBusy(true);
+    setQueryStart(Date.now());
     setMessages((prev) => [
       ...prev,
-      { role: "user" as const, text, timestamp: stamp() },
+      { role: "user" as const, text, timestamp: nowStampIST() },
     ]);
     setInputValue("");
     setStatusMode("recovering");
     runLive(text, {});
-  }, [busy, stamp, runLive]);
+  }, [busy, runLive]);
 
   // ---- Crash trigger (Phase 3 — REAL backend, step 1 of 2) ----
   // Calls /ask with crash_after_tools: the graph runs the tools, commits the
@@ -402,10 +408,11 @@ export default function PolicyDesk() {
     if (busy) return;
     setBusy(true);
     setCrash(null);
+    setQueryStart(Date.now());
     const text = QUESTIONS.crash;
     setMessages((prev) => [
       ...prev,
-      { role: "user" as const, text, timestamp: stamp() },
+      { role: "user" as const, text, timestamp: nowStampIST() },
       { role: "thinking" as const, label: "Running tools…" },
     ]);
     setInputValue("");
@@ -462,13 +469,14 @@ export default function PolicyDesk() {
         setBusy(false);
         refreshStatusFromChaos();
       });
-  }, [busy, stamp, addLog, renderRealEvents, refreshStatusFromChaos]);
+  }, [busy, addLog, renderRealEvents, refreshStatusFromChaos]);
 
   // ---- Resume from checkpoint (Phase 3 — REAL backend, step 2 of 2) ----
   const resumeCrash = useCallback(() => {
     if (!crash || resuming) return;
     const { threadId, eventCount } = crash;
     setResuming(true);
+    setQueryStart(Date.now());
     setStatusMode("recovering");
     addLog({ kind: "ok", text: "checkpoint found → resuming at synthesis" }, 1);
     // Swap the interrupted message for a thinking indicator.
@@ -539,26 +547,20 @@ export default function PolicyDesk() {
           const script =
             key === "breakModel"
               ? LOG_SCRIPTS.arm_breakModel
-              : key === "failTool"
-              ? LOG_SCRIPTS.arm_failTool
-              : LOG_SCRIPTS.arm_rateLimit;
-          script.forEach((l, i) => addLog(l, i === 0 ? 1 : 1));
+              : LOG_SCRIPTS.arm_failTool;
+          script.forEach((l) => addLog(l, 1));
         } else {
           const label =
-            key === "breakModel"
-              ? "primary model break"
-              : key === "failTool"
-              ? "tool failure"
-              : "rate-limit";
+            key === "breakModel" ? "primary model break" : "tool failure";
           addLog({ kind: "info", text: `${label} cleared` }, 1);
         }
         // Update status
-        const armed = next.breakModel || next.failTool || next.rateLimit;
+        const armed = next.breakModel || next.failTool;
         setStatusMode(armed ? "degraded" : "healthy");
         // Prefill input
         if (next.failTool) setInputValue(QUESTIONS.degraded);
-        else if (next.breakModel || next.rateLimit) setInputValue(QUESTIONS.fallback);
-        else setInputValue(QUESTIONS.clean);
+        else if (next.breakModel) setInputValue(QUESTIONS.fallback);
+        else setInputValue("");
 
         return next;
       });
@@ -566,18 +568,15 @@ export default function PolicyDesk() {
     [addLog],
   );
 
-  // ---- Seed: fire one clean /ask on mount ----
-  const seeded = useRef(false);
+  // ---- Mount: index the policy, but do NOT auto-send. The chat starts empty
+  // with suggestion chips; the user picks one (or types) to begin. ----
+  const mounted = useRef(false);
   useEffect(() => {
-    if (seeded.current) return;
-    seeded.current = true;
+    if (mounted.current) return;
+    mounted.current = true;
 
+    setQueryStart(Date.now());
     addLog({ kind: "info", text: "policy loaded · clauses indexed" }, 0);
-
-    const text = QUESTIONS.clean;
-    setBusy(true);
-    setMessages([{ role: "user", text, timestamp: stamp() }]);
-    runLive(text, {});
     setStatusMode("healthy");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -594,6 +593,9 @@ export default function PolicyDesk() {
           busy={busy}
           onResume={crash ? resumeCrash : undefined}
           resuming={resuming}
+          suggestions={SUGGESTIONS}
+          onSuggestion={sendChip}
+          showSuggestions={messages.length === 0}
         />
         <ChaosRail
           chaos={chaos}
@@ -603,6 +605,7 @@ export default function PolicyDesk() {
           busy={busy}
           logLines={logLines}
           logTimestamps={logTimestamps}
+          queryStart={queryStart}
           onClearLog={clearLog}
           receipt={receipt}
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { POLICY } from "../constants";
 
 interface TopBarProps {
@@ -15,10 +16,10 @@ const statusLabels: Record<string, string> = {
 export default function TopBar({ statusMode }: TopBarProps) {
   return (
     <header className="topbar">
-      <div className="wordmark">
-        <span className="mark">P</span>
+      <Link className="wordmark" href="/">
+        <span className="mark">I</span>
         <span>{POLICY.wordmark}</span>
-      </div>
+      </Link>
       <nav className="breadcrumb">
         <span className="doc">{POLICY.insurer}</span>
         <span className="sep">·</span>

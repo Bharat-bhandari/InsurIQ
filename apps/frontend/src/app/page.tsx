@@ -3,9 +3,9 @@ import Link from "next/link";
 import "./landing.css";
 
 export const metadata: Metadata = {
-  title: "PolicyDesk — Insurance answers that survive failure",
+  title: "InsurIQ — Insurance answers that survive failure",
   description:
-    "PolicyDesk answers questions about your health policy with a citation for every fact — and keeps answering when the model goes down, a tool fails, or the process crashes mid-question.",
+    "InsurIQ answers questions about your health policy with a citation for every fact — and keeps answering when the model goes down, a tool fails, or the process crashes mid-question.",
 };
 
 /* ---- Inline SVG helpers (tiny, keeps the file self-contained) ---- */
@@ -128,9 +128,9 @@ export default function LandingPage() {
       {/* ---- Top bar ---- */}
       <header className="topbar">
         <div className="wrap">
-          <a className="wordmark" href="#top">
-            <span className="mark">P</span>PolicyDesk
-          </a>
+          <Link className="wordmark" href="/">
+            <span className="mark">I</span>InsurIQ
+          </Link>
           <Link className="btn btn-primary btn-sm" href="/demo">
             Open the demo
             <ArrowRight size={14} />
@@ -147,13 +147,13 @@ export default function LandingPage() {
             </div>
             <h1>Insurance answers that survive failure.</h1>
             <p className="lead">
-              PolicyDesk answers questions about your health policy with a
+              InsurIQ answers questions about your health policy with a
               citation for every fact — and keeps answering when the model goes
               down, a tool fails, or the process crashes mid-question.
             </p>
             <div className="hero-cta">
               <Link className="btn btn-primary btn-lg" href="/demo">
-                Open the demo
+                Break it yourself
                 <ArrowRight />
               </Link>
               <a className="link-quiet" href="#how">
@@ -285,7 +285,7 @@ export default function LandingPage() {
             <div className="tier tier--two">
               <div className="tier-tag">
                 Tier 2{" "}
-                <span className="badge">PolicyDesk&apos;s own layer</span>
+                <span className="badge">InsurIQ&apos;s own layer</span>
               </div>
               <h3>Orchestration resilience</h3>
               <div className="tier-sub">
@@ -336,8 +336,7 @@ export default function LandingPage() {
           <div className="tiers-kicker">
             <p className="q">
               &ldquo;The gateway makes model calls resilient. We make the
-              agent&apos;s own state resilient — the part the gateway can&apos;t
-              see.&rdquo;
+              agent&apos;s own state resilient.&rdquo;
             </p>
           </div>
         </div>
@@ -350,7 +349,7 @@ export default function LandingPage() {
           <h2>It says so when it doesn&apos;t know.</h2>
           <p className="lead">
             Every answer is tied to a verbatim clause from your actual policy.
-            When a fact can&apos;t be found or verified, PolicyDesk{" "}
+            When a fact can&apos;t be found or verified, InsurIQ{" "}
             <b>flags it</b> rather than filling the gap with what
             &lsquo;usually&rsquo; applies. Under failure, that honesty is
             exactly what keeps it trustworthy — a degraded answer you can trust
@@ -413,7 +412,7 @@ export default function LandingPage() {
       <footer className="footer">
         <div className="wrap">
           <a className="wordmark" href="#top">
-            <span className="mark">P</span>PolicyDesk
+            <span className="mark">I</span>InsurIQ
           </a>
           <div className="credit">
             <span>

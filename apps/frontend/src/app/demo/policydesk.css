@@ -52,7 +52,7 @@
 .policydesk-root .wordmark {
   display: flex; align-items: center; gap: 8px;
   font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
-  color: var(--brand);
+  color: var(--brand); text-decoration: none; cursor: pointer;
 }
 .policydesk-root .wordmark .mark {
   width: 20px; height: 20px; border-radius: 5px;
@@ -358,6 +358,29 @@
   margin-top: 9px; font-size: 12px; color: var(--text-tertiary);
   text-align: center;
 }
+
+/* Suggestion chips (empty chat) */
+.policydesk-root .suggestion-group {
+  max-width: 640px; margin: 0 auto 12px; text-align: center;
+}
+.policydesk-root .suggestion-caption {
+  font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-tertiary); margin-bottom: 8px;
+}
+.policydesk-root .suggestion-chips {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 9px;
+}
+.policydesk-root .suggestion-chip {
+  font-family: var(--sans); font-size: 12.5px; line-height: 1.3;
+  text-align: center; color: var(--text-secondary);
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.policydesk-root .suggestion-chip:hover {
+  border-color: var(--brand); color: var(--brand-hover); background: var(--brand-subtle);
+}
+.policydesk-root .suggestion-chip:disabled { opacity: .5; cursor: default; }
 
 /* ============================================================
    CHAOS RAIL

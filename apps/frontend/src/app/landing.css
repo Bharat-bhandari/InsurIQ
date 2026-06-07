@@ -72,6 +72,7 @@
 .landing-root .wordmark {
   display: flex; align-items: center; gap: 9px;
   font-weight: 600; font-size: 16px; letter-spacing: -0.01em; color: var(--brand);
+  text-decoration: none; cursor: pointer;
 }
 .landing-root .wordmark .mark {
   width: 22px; height: 22px; border-radius: 6px; background: var(--brand);
@@ -184,7 +185,7 @@
   border-radius: var(--radius-card); padding: 26px 26px 10px;
   border: 1px solid var(--border); background: var(--bg);
 }
-.landing-root .tier--two {
+.landing-root .tier--one {
   border-color: var(--brand-pale-border);
   background: var(--brand-pale-bg);
   box-shadow: inset 3px 0 0 var(--brand);
@@ -195,13 +196,13 @@
   text-transform: uppercase; margin-bottom: 14px;
   color: var(--text-tertiary);
 }
-.landing-root .tier--two .tier-tag { color: var(--brand); }
+.landing-root .tier--one .tier-tag { color: var(--brand); }
 .landing-root .tier-tag .badge {
   font-family: var(--mono); font-size: 10px; font-weight: 500;
   border-radius: 4px; padding: 2px 6px; letter-spacing: .02em; text-transform: none;
 }
-.landing-root .tier--one .tier-tag .badge { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-secondary); }
-.landing-root .tier--two .tier-tag .badge { background: var(--brand-subtle); border: 1px solid var(--brand-pale-border); color: var(--brand-hover); }
+.landing-root .tier--two .tier-tag .badge { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-secondary); }
+.landing-root .tier--one .tier-tag .badge { background: var(--brand-subtle); border: 1px solid var(--brand-pale-border); color: var(--brand-hover); }
 .landing-root .tier h3 { margin: 0 0 4px; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .landing-root .tier .tier-sub { color: var(--text-secondary); font-size: 13.5px; margin-bottom: 8px; }
 
@@ -212,20 +213,22 @@
   display: grid; place-items: center;
   background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
 }
-.landing-root .tier--two .feat-ico { background: var(--brand-subtle); border-color: var(--brand-pale-border); color: var(--brand); }
+.landing-root .tier--one .feat-ico { background: var(--brand-subtle); border-color: var(--brand-pale-border); color: var(--brand); }
 .landing-root .feat-ico svg { width: 16px; height: 16px; }
 .landing-root .feat-body .ft { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
 .landing-root .feat-body .fd { font-size: 13px; color: var(--text-secondary); line-height: 1.5; text-wrap: pretty; }
 
 .landing-root .tiers-kicker {
-  margin-top: 30px; padding: 18px 22px;
+  margin: 40px auto 0; padding: 16px 32px;
   border: 1px solid var(--brand-pale-border); background: var(--bg);
   border-radius: var(--radius-card);
-  display: flex; gap: 12px; align-items: flex-start;
+  width: fit-content;
+  max-width: 100%;
 }
 .landing-root .tiers-kicker .q {
   font-family: var(--serif); font-style: italic; font-size: 18px; line-height: 1.5;
-  color: var(--brand-hover); text-wrap: pretty; margin: 0;
+  color: var(--brand-hover); margin: 0 auto;
+  text-align: center;
 }
 
 /* ---- Honesty ---- */

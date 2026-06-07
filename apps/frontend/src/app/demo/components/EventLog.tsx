@@ -5,11 +5,20 @@ import type { LogLine } from "../constants";
 
 interface EventLogProps {
   lines: LogLine[];
-  timestamps: string[];
+  // Absolute event times (epoch ms). Rendered as elapsed since queryStart.
+  timestamps: number[];
+  queryStart: number;
   onClear: () => void;
 }
 
-export default function EventLog({ lines, timestamps, onClear }: EventLogProps) {
+// Elapsed seconds since the current query started, e.g. "+0.0s", "+1.2s".
+function fmtElapsed(ts: number | undefined, start: number): string {
+  if (ts == null) return "";
+  const d = Math.max(0, (ts - start) / 1000);
+  return `+${d.toFixed(1)}s`;
+}
+
+export default function EventLog({ lines, timestamps, queryStart, onClear }: EventLogProps) {
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,7 +38,7 @@ export default function EventLog({ lines, timestamps, onClear }: EventLogProps) 
       <div className="event-log" ref={logRef}>
         {lines.map((ln, i) => (
           <div key={i} className={`ln ${ln.kind}`}>
-            <span className="t">{timestamps[i] ?? ""}</span>
+            <span className="t">{fmtElapsed(timestamps[i], queryStart)}</span>
             <span className="m">
               {ln.indent && <span className="indent">↳ </span>}
               {ln.text}

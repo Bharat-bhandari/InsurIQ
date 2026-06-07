@@ -393,6 +393,9 @@ interface ThreadViewProps {
   busy: boolean;
   onResume?: () => void;
   resuming?: boolean;
+  suggestions?: string[];
+  onSuggestion?: (text: string) => void;
+  showSuggestions?: boolean;
 }
 
 export default function ThreadView({
@@ -403,6 +406,9 @@ export default function ThreadView({
   busy,
   onResume,
   resuming,
+  suggestions,
+  onSuggestion,
+  showSuggestions,
 }: ThreadViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -487,6 +493,24 @@ export default function ThreadView({
       {/* Input dock */}
       <div className="input-dock">
         <div className="dock-inner">
+          {showSuggestions && suggestions && suggestions.length > 0 && (
+            <div className="suggestion-group">
+              <div className="suggestion-caption">Try asking</div>
+              <div className="suggestion-chips">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="suggestion-chip"
+                    disabled={busy}
+                    onClick={() => onSuggestion?.(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="input-row">
             <input
               id="ask-input"

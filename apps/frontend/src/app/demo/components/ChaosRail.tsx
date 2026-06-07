@@ -7,7 +7,6 @@ import ReceiptPanel from "./ReceiptPanel";
 export interface ChaosState {
   breakModel: boolean;
   failTool: boolean;
-  rateLimit: boolean;
 }
 
 interface ChaosRailProps {
@@ -17,7 +16,8 @@ interface ChaosRailProps {
   onTriggerInjection: () => void;
   busy: boolean;
   logLines: LogLine[];
-  logTimestamps: string[];
+  logTimestamps: number[];
+  queryStart: number;
   onClearLog: () => void;
   receipt: ReceiptData | null;
 }
@@ -30,6 +30,7 @@ export default function ChaosRail({
   busy,
   logLines,
   logTimestamps,
+  queryStart,
   onClearLog,
   receipt,
 }: ChaosRailProps) {
@@ -81,25 +82,7 @@ export default function ChaosRail({
           </div>
         </div>
 
-        {/* 3 · Rate-limit primary */}
-        <div className={`ctrl${chaos.rateLimit ? " armed" : ""}`}>
-          <div className="ctrl-top">
-            <div className="ctrl-label">Rate-limit primary</div>
-            <button
-              className="switch"
-              role="switch"
-              aria-checked={chaos.rateLimit}
-              aria-label="Rate-limit primary"
-              onClick={() => onToggle("rateLimit")}
-            />
-          </div>
-          <div className="ctrl-desc">
-            Primary returns 429. Next answer fails over to the backup model rather than
-            waiting.
-          </div>
-        </div>
-
-        {/* 4 · Crash mid-answer */}
+        {/* 3 · Crash mid-answer */}
         <div className="ctrl">
           <div className="ctrl-top">
             <div className="ctrl-label">Crash mid-answer</div>
@@ -117,7 +100,7 @@ export default function ChaosRail({
           </div>
         </div>
 
-        {/* 5 · Prompt injection */}
+        {/* 4 · Prompt injection */}
         <div className="ctrl">
           <div className="ctrl-top">
             <div className="ctrl-label">Prompt injection</div>
@@ -140,7 +123,12 @@ export default function ChaosRail({
       <div className="rail-divider" />
 
       {/* Event log */}
-      <EventLog lines={logLines} timestamps={logTimestamps} onClear={onClearLog} />
+      <EventLog
+        lines={logLines}
+        timestamps={logTimestamps}
+        queryStart={queryStart}
+        onClear={onClearLog}
+      />
 
       {/* Receipt */}
       <ReceiptPanel receipt={receipt} />
