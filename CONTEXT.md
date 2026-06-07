@@ -11,7 +11,7 @@
 > Bharat's notes. The schema we reuse here (`src/states/policy.py`,
 > `src/states/evidence.py`) is unchanged and authoritative.
 
-_Last updated: 2026-06-04_
+_Last updated: 2026-06-07_
 
 ---
 
@@ -86,8 +86,8 @@ model goes down, a tool fails, and the process crashes mid-question.
 **Tier 1 — Gateway resilience (declarative; TrueFoundry enforces, we configure):**
 
 - Model fallback chain (PROVEN — see A5)
-- Input guardrail: PII redaction + prompt-injection block
-- MCP scoped tool access + audit log
+- Input guardrail: PII redaction + prompt-injection block (LIVE — see A5/A7)
+- MCP scoped tool access + audit log (registered + traced; run-local for the demo — see A13 2026-06-07)
 
 **Tier 2 — Orchestration resilience (our LangGraph code — THE DIFFERENTIATOR):**
 
@@ -103,173 +103,169 @@ LangGraph agent. We do.
 
 ---
 
-## A5. Proven so far (gateway tier)
+## A5. Proven so far (gateway + orchestration tiers)
 
 - AWS Bedrock account configured in TrueFoundry; region **us-east-1**; **60 models passing**.
 - **Fallback works, traced:** priority-based routing; rate-limited Llama-3-70B →
-  fell to DeepSeek R1 (`target_attempt_count: 2`, `applied_ratelimit_rule_ids`). Save that trace — it's demo evidence.
-- **Anthropic models blocked:** expired/zero-duration AWS Marketplace agreement
-  (start = end timestamp). AWS support case raised. NOT blocking — we build on Llama/Nova/DeepSeek and slot Claude in as primary (one-line config change) if/when it clears.
-- **Plan:** free **Developer** tier is enough — 50k gateway requests/mo (each LLM
-  call AND each MCP tool call counts as 1). Tokens bill to **own AWS account**
-  (set a ~$10 billing alert; cap retries so failure-testing loops don't burn budget). Admin (Sai) confirmed: exceed the 50k and they'll extend.
+  fell to DeepSeek R1 (`target_attempt_count: 2`). Save that trace — it's demo evidence.
+- **Anthropic models blocked:** expired AWS Marketplace agreement (support case raised).
+  NOT blocking — built on Llama/Nova/DeepSeek/Mistral; current primary resolves to
+  `mistral.devstral-2-123b`, fails over to `us.deepseek.r1`.
+- **Plan:** free **Developer** tier (50k gateway requests/mo). Tokens bill to own AWS
+  account (~$10 billing alert; cap retries).
 
-**Working fallback chain (until Claude clears):**
-`us.meta.llama3-3-70b-instruct` (primary) → `us.amazon.nova-pro` → `us.amazon.nova-micro` → `openai.gpt-oss-120b`. 3+ providers = real cross-provider story.
+**Break-model button LIVE:** chaos virtual model group `insuriq-production-chaos`
+(priority-0 broken → 403 → working fallback); `--break-model` / `chaos.break_model`
+routes synthesis there via `TFY_MODEL_CHAOS`; confirmed answering via DeepSeek with
+`chaos_mode: break_model`, 403+failover visible in server Request Traces.
 
-**Orchestration tier — PROVEN (Step 3 slice + Step 4 real graph, see A13):** tool-fail →
-honest-degradation branch, real-kill (`os._exit`) crash → checkpoint-resume
-with no tool re-run, AND the deterministic grounding gate (drop-and-note /
-regenerate / degrade) all working end-to-end in the real graph.
+**Input guardrails LIVE + firing server-side:** group `insuriq-input-guardrails` —
+`insuriq-pii` (mutate; masks policy number + name before the model) and
+`insuriq-prompt-injection` (Azure/Bedrock `shieldPrompt`, block → 400). Both seen in
+Request Traces. KNOWN LIMITATION: PII guardrail also redacts the trusted evidence
+payload → false positives on clause prose (Hernia/Platinum+/etc). Cosmetic only (gate
+checks keys+status, not prose); proper fix = scope guardrail to user message only.
+Frame as a named limitation.
 
-**Tier-1 fallback seen firing in the wild (not staged):** during Step-4 testing a
-synthesis call resolved to `us.deepseek.r1` instead of the Llama primary (primary
-rate-limited/hiccuped) and the structured grounded output still came back valid.
-Real cross-model failover, mid-run, with grounding intact.
+**Orchestration tier — PROVEN (Step 3 slice + Step 4 real graph + Phase-3 API, see A13):**
+tool-fail → honest-degradation branch, crash → checkpoint-resume with no tool re-run
+(CLI via `os._exit`; API via `interrupt_before=["crash_point"]`), AND the
+deterministic grounding gate (drop-and-note / regenerate / degrade) all working.
+
+**Tier-1 fallback seen firing in the wild (not staged):** synthesis calls have
+resolved to `us.deepseek.r1` instead of the primary mid-run with grounding intact.
 
 **Checkpointer learning (hard-won, environment-specific — a fresh session MUST know this):**
+
 - Stack: `langgraph 1.1.3`, `langgraph-checkpoint 4.1.1`, `langgraph-checkpoint-sqlite 3.1.0`, `aiosqlite 0.22.1`.
-- Use `langgraph.checkpoint.sqlite.SqliteSaver` over a `sqlite3.connect(..., check_same_thread=False)` connection (so the saver outlives a `with` block).
-- **`durability="sync"` is REQUIRED** on `graph.stream(...)`. LangGraph 1.x defaults to `"async"`, which would NOT have committed the post-`call_tool` checkpoint to disk before `os._exit(1)` fires → the tool would wrongly re-run on resume. This single flag is what makes the crash/resume proof real.
-- Resume convention (LangGraph 1.x): `graph.stream(None, config={"configurable": {"thread_id": ...}})` — pass `None` as input with the same `thread_id`. Detect an existing checkpoint via `graph.get_state(config).values` / `.next`.
+- Use `langgraph.checkpoint.sqlite.SqliteSaver` over `sqlite3.connect(..., check_same_thread=False)`.
+- **`durability="sync"` is REQUIRED** on `graph.stream(...)` (LangGraph 1.x defaults `"async"` → would lose the pre-crash checkpoint).
+- Resume: `graph.stream(None, config={"configurable":{"thread_id":...}})`; detect existing checkpoint via `graph.get_state(config).values`/`.next`.
+- API crash variant: `interrupt_before=["crash_point"]` (NOT `os._exit`, which would kill the uvicorn worker). CLI keeps its literal `os._exit`. Same graph + checkpointer, different trigger.
 
 ---
 
-## A6. MCP scoping — BOTH demos (they complement each other)
+## A6. MCP scoping — DEPRIORITIZED (both denial demos cut for time)
 
-1. **Write-scope denial.** Register a genuinely dangerous tool (e.g. `delete_policy` /
-   `update_user_record`) in the MCP Gateway that the Q&A agent's token **cannot** call.
-   Demo: a prompt-injection tries to make the agent call it → gateway **denies** →
-   audit log shows the blocked attempt. Proves scoping is real, not theater.
-2. **PII read-scope denial.** Identity fields (names/DOB/CKYC) live in a separate
-   store (per InsurIQ §6 PII rule). Register `get_member_identity` that the Q&A agent
-   is **not** scoped for. Demo: agent answers the coverage question fully but
-   physically cannot surface identity. Turns the existing PII-separation decision
-   into a live safety demo.
+Original plan was two scoping-denial demos (write-scope + PII read-scope). Both
+DEPRIORITIZED — one tool genuinely registered + called through the MCP Gateway
+already satisfies "MCP scoped usage." Evidence: earlier Request Traces showing
+`MCPGateway: initialize / tools/list (insuriq-vps-engine)` with Bharat's identity.
+(Kept here for post-hackathon.)
 
 ---
 
 ## A7. Tools, guardrails, receipt
 
-**Tools (read-only over the seed `Policy`; each returns Evidence WITH spans intact):**
+**Tools (read-only over the seed `Policy`; each returns keyed-Evidence `{key, value, status, span, notes}`):**
 
-- `get_waiting_periods()` → the whole `WaitingPeriods` group (initial / PED / specific-disease months, the listed diseases, and the 'longer applies' meta-rule). Slice proved this one.
-- `get_room_rent_rule()` → `RoomRentRule` (NOTE: in the seed, `room_rent_limit` is honestly `FLAGGED_UNKNOWN` — Platinum+ states no per-day cap; `proportionate_deduction` is VERIFIED at clause 6.2.4(d), p47). This is a real gap the degradation scene can point at.
-- `resolve_for_user(condition)` → relevant `ResolvedFacts` (multi-span LAYER_JOIN, e.g. effective PED waiting = 0 because no PED declared).
-- `get_sub_limit(condition)` → matching `SubLimit` (NOTE: Cataract sub-limit is a genuine `FLAGGED_UNKNOWN` in the seed — another real degradation hook).
-- Tools return value + spans (page + clause + verification status) — grounding flows through the tool layer.
-- **Return-shape contract:** the slice's `synthesize` reads named keys off the tool result (`specific_disease_months`, `pre_existing_disease_months`, `longer_waiting_rule`, each `{value, span:{clause,page}}`). Step 4's real tools + synthesis must keep this contract in agreement.
+- `get_waiting_periods()` → waiting-period group (initial / PED / specific-disease months, listed diseases, 'longer applies' meta-rule).
+- `get_room_rent_rule()` → `room_rent_limit` is honestly `FLAGGED_UNKNOWN`; `proportionate_deduction` VERIFIED (6.2.4(d), p47) — a real degradation hook.
+- `resolve_for_user(condition)` → `ResolvedFacts` (multi-span LAYER_JOIN; e.g. effective PED waiting = 0).
+- `get_sub_limit(condition)` → `SubLimit` (Cataract sub-limit value is a genuine `FLAGGED_UNKNOWN` — the true gate drop-and-note hook).
+- **Return-shape contract:** synthesis reads named keys off each tool result; grounding gate resolves cite keys against this.
 
 **Guardrails:**
 
-- **Input (gateway-native):** PII redaction; prompt-injection block.
-- **Output (our graph node — domain-specific):** grounding gate. Every policy claim
-  must trace to a VERIFIED Evidence span; ungrounded → block / regenerate / honest
-  "can't confirm." This is the runtime enforcement of the project's founding rule
-  (the placeholder node that hallucinated policy facts is exactly what this catches).
-- **Honesty in writeup:** be explicit which guardrails are gateway-native (PII,
-  injection) vs our own grounding logic (graph verification node). Don't overclaim.
+- **Input (gateway-native, LIVE):** `insuriq-pii` redaction + `insuriq-prompt-injection` block. Guardrail-block 400 handled client-side → `GuardrailBlocked` → honest refusal naming the guardrail (no retry), receipt records `guardrail_blocked`.
+- **Output (our graph node):** grounding gate — every claim must trace to a VERIFIED span; ungrounded → drop-and-note / regenerate / degrade.
+- **TWO DISTINCT HONEST BEATS (narrate separately — don't conflate):**
+  1. **Tool-failure degradation:** a tool times out → its evidence is absent → agent answers what it can, flags the gap. `tool_status=degraded`, `grounding.action=pass` (gate has nothing to drop).
+  2. **Gate drop-and-note:** a tool SUCCEEDS but returns a `FLAGGED_UNKNOWN` field (e.g. cataract sub-limit) → gate genuinely drops the claim + notes it. `grounding.action=drop_and_note`, `grounding.dropped` populated.
+- **Honesty in writeup:** be explicit which guardrails are gateway-native (PII, injection) vs our grounding node. Don't manufacture a gate-drop from a tool failure.
 
-**Resilience receipt (the proof artifact — Aegis Receipt lesson):** per-query JSON /
-panel showing: models tried + which answered · which tool degraded · checkpoint
-resume yes/no · which guardrails fired · total latency. End the demo on this.
+**Resilience receipt (the proof artifact):** per-query JSON showing models tried +
+which answered · which tool degraded · checkpoint resume yes/no · which guardrails
+fired · grounding verdict · latency. `--receipt-json` CLI flag + the screen's receipt
+panel both emit it. End the demo on this.
 
 ---
 
 ## A8. Demo flow (5 scenes, ~3 min)
 
 1. **Framing line** (10s): what it does + resilience is the point + "watch me break all three."
-2. **Happy path:** ask the knee-surgery question → PII redacted badge → plan → scoped
-   tool calls → cited answer → output grounding gate passes. Establish "working."
-3. **Model down (Tier 1):** chaos toggle breaks primary → gateway falls over → same
-   answer, different model. Point at resolved-model badge.
-4. **Tool fails (Tier 2 — differentiator):** toggle tool timeout → conditional branch →
-   **honest degraded answer** (answers what's verified, flags what it couldn't confirm).
-   **Show side-by-side vs a naive agent** (which hallucinates or 500s) — the contrast
-   is what makes the sophistication legible.
-5. **Crash mid-graph (Tier 2 — showstopper):** kill process after tools, before
-   synthesis → restart → **resume from checkpoint**, no rework. Then close on the **receipt**.
+2. **Happy path:** knee-surgery question → PII redacted → scoped tool calls → cited answer → grounding gate passes.
+3. **Model down (Tier 1):** break-primary toggle → gateway falls over → same answer, different model (DeepSeek). Point at resolved-model badge.
+4. **Tool fails (Tier 2 — differentiator):** selective tool timeout → honest degraded answer (answers what's verified, flags the gap). Side-by-side vs a naive agent.
+5. **Crash mid-graph (Tier 2 — showstopper):** Trigger crash → checkpoint-saved interrupted state → Resume → resumes from checkpoint, no rework. Close on the **receipt**.
+
+- (Optional 6th micro-beat: cataract question with no chaos → the TRUE gate drop-and-note on the FLAGGED_UNKNOWN sub-limit.)
 
 ---
 
-## A9. Scope
+## A9. Scope — final status
 
-**IN (build this week):**
-
-- ✅ Seed `Policy` fixture (one Niva Bupa object, hand-assembled once) — DONE
-- ✅ Vertical slice (chaos toggle → tool-fail branch → checkpoint-resume) — DONE
-- ✅ LangGraph Q&A graph: plan → tools → synthesize → grounding gate; checkpointer + branches — DONE (Step 4)
-- MCP tools (read-only) + BOTH scoping demos — Step 5
-- Guardrails: input (PII/injection, gateway) — Step 5; output grounding node — ✅ DONE (Step 4)
-- **Chaos controls** — all 4 toggles wired; `break_model` still stubbed (needs the gateway chaos virtual model — Step 5)
-- Per-query resilience receipt — ✅ real receipt emitting (resolved_model, tool_attempts, grounding verdict, regenerate_count, checkpoint_resumed, events)
-- **ONE demo screen** (Q&A + citations + chaos toggles + receipt) — design comp done, not yet wired (Step 6)
-
-**OUT (explicitly NOT this week — remains real InsurIQ future, untouched):**
-
-- Upload flow · document-type segmentation · extraction LLM jobs · OCR ·
-  human-review correction UI · multi-PDF · real auth · full product design system ·
-  Postgres extraction store (stub/minimize) · curated policy DB
+- ✅ Seed `Policy` fixture — DONE
+- ✅ Vertical slice — DONE
+- ✅ LangGraph Q&A graph + grounding gate — DONE
+- ✅ MCP tool registered + traced through gateway; run-local for demo stability — DONE (Step 5.2)
+- ✅ Guardrails: input PII/injection (gateway) + output grounding node — DONE
+- ✅ Break-model chaos virtual model — DONE
+- ✅ All 4 chaos toggles wired + live
+- ✅ Per-query resilience receipt (`--receipt-json` + screen panel)
+- ✅ Demo screen wired to live backend (Next.js `/demo`) — happy + 3 gateway scenes + crash-resume
+- ⏳ Phase-3 crash-resume: backend PROVEN; browser click-through + prod `/resume` deploy PENDING
+- ⏳ Curate 5 demo questions (lock clean takes)
+- ⏳ Record demo
+- Landing page — buffer only
+- MCP scoping-denial demos (5.4/5.5) — CUT (deprioritized)
 
 ---
 
-## A10. Build order (risk-first)
+## A10. Build order (status)
 
-| #   | Step                                                                                            | Why here                                                       |
-| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| 1   | Update CONTEXT.md                                                                               | ✅ DONE (this file)                                            |
-| 2   | Seed `Policy` fixture                                                                           | ✅ DONE — built + validated (`src/fixtures/`)                  |
-| 3   | **Vertical slice: chaos toggle → tool-fail branch → checkpoint resume** (CLI only)              | ✅ DONE — both unknowns proven (`src/slice/`)                  |
-| 4   | Real LangGraph Q&A graph + grounding gate                                                       | ✅ DONE — agent works end-to-end (`src/graphs/`, `src/nodes/`)  |
-| 5   | MCP tools (both scoping demos) + guardrails via gateway + break-model chaos virtual model       | ◀ NEXT — required-tool integrations                            |
-| 6   | The ONE demo screen + receipt display                                                           | Design once, correctly, knowing exactly what to show           |
-| 7   | Polish chaos controls + record demo                                                             | The ~60%-of-score part gets dedicated time                     |
+| #   | Step                                                          | Status                                                 |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------ |
+| 1   | Update CONTEXT.md                                             | ✅ ongoing                                             |
+| 2   | Seed `Policy` fixture                                         | ✅ DONE                                                |
+| 3   | Vertical slice (chaos → tool-fail → checkpoint resume)        | ✅ DONE                                                |
+| 4   | Real LangGraph Q&A graph + grounding gate                     | ✅ DONE                                                |
+| 5   | MCP tool + guardrails + break-model chaos model               | ✅ DONE (scoping denials cut)                          |
+| 6   | The ONE demo screen + receipt (Next.js `/demo`, all 5 scenes) | ✅ DONE (pending browser verify + prod /resume deploy) |
+| 7   | Curate questions + record demo + (buffer) landing page        | ◀ NEXT — the deliverable                               |
 
 ---
 
 ## A11. Risks & discipline (read before every session)
 
-- **#1 risk — over-engineering the domain, under-engineering the demo.** The schema
-  is DONE. Touch it only to seed the fixture. Every hour gold-plating Pydantic is an
-  hour not making the demo fire. Guard against own strength.
-- **Chaos triggers must be reliable** — build early. A flaky demo of a brilliant idea
-  loses to a clean demo of a simple one. Execution + demo clarity ≈ 60% of score.
-- **"Single seeded policy"** — frame confidently as focused scope ("the resilient Q&A
-  tier on top of an extracted policy"), never apologetically.
-- **Honest degradation must look visibly different from a plain error** — hence the
-  side-by-side vs a naive agent in scene 4.
-- **Cap retries.** Infinite retry is itself a resilience failure AND burns gateway-request budget.
-- **Judge self-rating:** idea ~7.5–8/10; final lands 6–9 _entirely_ on execution + demo reliability.
+- **#1 risk — over-engineering, under-recording.** The build is essentially DONE.
+  Remaining score lives in the RECORDING. Do not add features; record what works.
+- **Chaos triggers must be reliable.** Execution + demo clarity ≈ 60% of score.
+- **Curate demo questions** — the gate decision is deterministic but model prose
+  varies; run each scene a few times, pick clean correctly-cited takes.
+- **Honest degradation must look visibly different from a plain error** (side-by-side vs naive agent in scene 4).
+- **Two honest beats are distinct** (A7) — narrate tool-failure-degrade and gate-drop-and-note separately; never fake a gate-drop from a tool failure.
+- **Frame run-local MCP honestly:** "runs through the MCP Gateway (here are the traces); local for recording stability."
 
 ---
 
 ## A12. Reused assets (unchanged, authoritative)
 
-- `src/states/policy.py` — the `Policy` schema (rules / schedule / resolved regions).
-- `src/states/evidence.py` — the `Evidence` wrapper: multi-span, resolution trail,
-  6-state `VerificationStatus` enum (the vocabulary that makes honest degradation principled).
-- `src/{graphs,llms,nodes,states}` — proven backend layout. Keep it.
-- LLM layer (`src/llms/`) gets repointed at the TFY gateway virtual model `resilient-agent`
-  (was Groq direct) — one change, every node inherits fallback.
-- `src/fixtures/` — `_builders.py` (validator-safe Evidence constructors: `span`, `verified`, `flagged_unknown`), `niva_bupa_seed.py` (exports `NIVA_BUPA_POLICY`), `validate.py` (run `python -m src.fixtures.validate`).
-- `src/slice/` — Step-3 spike (reference only now; the real graph lives in `src/graphs/`).
-- `src/chaos.py` — canonical chaos controller (promoted from the slice). 4 toggles: `fail_tool`, `fail_tool_once`, `crash_after_tools`, `break_model` (stubbed until Step 5).
-- `src/llms/gateway.py` — OpenAI-compatible client at the TFY gateway. `chat()` (plain) + `chat_json()` (Pydantic structured output with one bounded repair pass). Env: `TFY_BASE_URL`, `TFY_API_KEY`, `TFY_MODEL`.
-- `src/tools/registry.py` — 4 read-only tools returning keyed-Evidence `{key, value, status, span, notes}`; `_wrap()` adds chaos hook + proof-of-execution print; `call_tool_with_retry` (max 2).
-- `src/nodes/synthesize.py` — `run_synthesis()` → `SynthesisAnswer {lede, lede_cites, claims[{text, cites}]}`. ONE-KEY-PER-CITE contract + deterministic **cite-guard** (splits multi-key cites, prefers verified for the lede) before any model repair.
-- `src/nodes/grounding_gate.py` — pure-function `evaluate()` → `GateVerdict{action ∈ PASS/DROP_AND_NOTE/REGENERATE/DEGRADE}`. "Resolve the key, check the enum"; grounded = `{verified, user_corrected}`.
-- `src/graphs/qa_graph.py` + `run.py` — the wired graph; SqliteSaver at `apps/backend/.qa_checkpoints.sqlite` (gitignored) + `durability="sync"`.
-- `scripts/` — `smoke_gateway.py`, `prove_synthesis.py`, `prove_grounding_gate.py` (isolation harnesses).
-- Checkpointer deps: `langgraph-checkpoint-sqlite` (+ `aiosqlite`). Sqlite files `apps/backend/.*_checkpoints.sqlite*` gitignored.
+- `src/states/policy.py`, `src/states/evidence.py` — schema + 6-state `VerificationStatus` enum.
+- `src/chaos.py` — chaos controller. 4 toggles: `fail_tool` (bool|str, selective), `fail_tool_once`, `crash_after_tools`, `break_model` — all live.
+- `src/llms/gateway.py` — OpenAI-compatible TFY client. `chat()` + `chat_json()` (structured output + repair). Catches guardrail-block 400 → `GuardrailBlocked`. `break_model` → `TFY_MODEL_CHAOS`. Env: `TFY_BASE_URL`, `TFY_API_KEY`, `TFY_MODEL`, `TFY_MODEL_CHAOS`.
+- `src/tools/registry.py` — 4 read-only tools (keyed-Evidence); `_wrap()` = chaos hook + proof print; `call_tool_with_retry` (max 2). MCP-vs-local via `USE_MCP_FOR` env (empty = local, current demo setting).
+- `src/mcp_server/server.py` — streamable-HTTP MCP server (POST `/mcp` + GET `/health`), thin wrapper over `_get_waiting_periods_body()`. Deployed on VPS; gateway URL `https://gateway.truefoundry.ai/himalayan-dev/mcp/insuriq-vps-engine/server`. NOTE: gateway↔server live link had an SSE/streamable-HTTP transport+registration mismatch (Resync 404); run-local for the demo, gateway usage evidenced by earlier traces.
+- `src/nodes/synthesize.py` / `synthesize_node.py` — `SynthesisAnswer {lede, lede_cites, claims[{text,cites}]}`; ONE-KEY-PER-CITE + deterministic cite-guard; catches `GuardrailBlocked` → honest refusal; `synthesize_degraded` for tool-degrade + gate-degrade.
+- `src/nodes/call_tools.py` + `crash_point.py` — partial-degrade (keep successful tools' results on partial failure; route on usable results); `crash_point` = CLI `os._exit`, API uses `interrupt_before`.
+- `src/nodes/grounding_gate.py` — pure-function `evaluate()` → `GateVerdict{PASS/DROP_AND_NOTE/REGENERATE/DEGRADE}`.
+- `src/graphs/qa_graph.py` + `run.py` — wired graph; SqliteSaver `.qa_checkpoints.sqlite` (gitignored) + `durability="sync"`.
+- `src/api/app.py` — FastAPI. `POST /ask` (question + chaos), `POST /resume` ({thread_id}), `GET /health`. Shared `_full_response()` / `_build_receipt`. Re-exported via `main.py`. CORS for the frontend.
+- `apps/frontend/src/app/demo/` — Next.js demo (PolicyDesk.tsx, api.ts, policydesk.css, constants.ts, components/). Receipt-driven rendering of all 5 scenes. Env `NEXT_PUBLIC_API_BASE_URL`. Reference UI (now wired-port source) lives at `insuriq-resilient/` (HTML/JS) — recording fallback surface.
+- `scripts/` — `smoke_gateway.py`, `prove_synthesis.py`, `prove_grounding_gate.py`.
+- Deployed: frontend `https://insuriq.himalayandev.tech/demo`, API `https://api.insuriq.himalayandev.tech`. ~1-min Docker deploy via VPS.
 
 ---
 
 ## A13. Decision log (hackathon, append-only, dated)
 
 - **2026-06-01** — Registered for TrueFoundry Resilient Agents hackathon (June 1–7). Open, no selection round.
-- **2026-06-02** — Gateway tier proven: Bedrock via TFY (us-east-1, 60 models passing); priority-based fallback Llama-3-70B → DeepSeek R1 traced on rate-limit. Anthropic models blocked on expired AWS Marketplace agreement (support case raised); non-blocking, build on Llama/Nova/DeepSeek.
-- **2026-06-03** — **PIVOT:** hackathon project = **PolicyDesk**, a resilient Q&A tier over a **SEEDED** `Policy` object. Extraction pipeline explicitly OUT of scope. Adopted **two-tier resilience** framing (gateway = config; orchestration = our code). Orchestration tier (tool-fail honest degradation, checkpoint resume, grounding gate) is the differentiator vs prior winners (Aegis/Unsinkable left stateful agents open). Both MCP scoping demos (write-scope denial + PII read-scope denial). Build order is risk-first: seed → vertical-slice de-risk → graph → MCP/guardrails → one demo screen → polish+record.
-- **2026-06-04** — **Seed fixture DONE.** `NIVA_BUPA_POLICY` hand-assembled in `src/fixtures/` from the real Niva Bupa ReAssure 2.0 PDF (policy 34884769202601). Tier-A verbatim spans for the demo-critical facts (24mo specific-disease incl. knee/joint replacement, 36mo PED, 'longer applies' meta-rule 5.1.2(c), proportionate-deduction 6.2.4(d), schedule values, LAYER_JOIN resolved facts). Honest `FLAGGED_UNKNOWN`s where the policy is silent (room-rent cap, Cataract sub-limit) — these double as real hooks for the degradation scene. `validate.py` constructs cleanly; all Evidence validators pass. CAVEAT: real member names sit in schedule `span.text` — scrub to neutral placeholders before recording/public push (per §6 PII).
-- **2026-06-04** — **Step 3 (vertical slice) DONE.** Both Tier-2 unknowns proven on a 5-node CLI graph (`src/slice/`): (1) tool-fail → bounded retry (max 2) → honest-degradation branch; (2) real-kill (`os._exit(1)`) crash → SQLite checkpoint → resume with the tool NOT re-run (proven by the single `[call_tool]` print across both commands). Key environment learning: `durability="sync"` required (LangGraph 1.x defaults async → would lose the pre-crash checkpoint). Resume = `stream(None, same thread_id)`. Bonus `--fail-tool-once` transient mode also works (recovers on attempt 2). Chaos module has all 4 toggles; `break_model` stubbed for Step 4. Verified against the actual files — resume is a true resume, not a fresh run.
-- **2026-06-04** — **Step 4 (real Q&A graph) DONE.** Promoted the slice into the canonical layout (`src/llms`, `src/tools`, `src/nodes`, `src/graphs`). Real synthesis via the gateway `resilient-agent` virtual model (Tier-1 fallback now live for the whole graph — observed failing over to DeepSeek R1 mid-test with grounding intact). Deterministic grounding gate (resolve-key-check-enum; grounded = verified/user_corrected) with locked **drop-and-note** policy: non-lede ungrounded claim → drop + honest note; ungrounded lede → regenerate (max 2) → degrade. All 6 end-to-end scenarios pass (happy/PASS, `--fail-tool`/degrade, combined-question, `--crash-after-tools`+resume with zero tool re-run, `--fail-tool-once`/recover). Isolation harnesses green (`prove_synthesis` 5/5 valid keys; `prove_grounding_gate` a/b/c). **Fix applied:** model sometimes packed multiple keys into one `cites` (e.g. `"ev_specific_wait,ev_room_rent_cap"`) → gate correctly rejected but over-degraded an answerable combined question. Added a deterministic **cite-guard** in synthesis (split multi-key cites, prefer verified for the lede; one-shot model repair only if split fails). Gate left untouched. Combined question now correctly DROP_AND_NOTEs the unverifiable half instead of full-degrading. **Re-verify CONFIRMED:** combined question lands on `drop_and_note` (lede `ev_specific_wait` verified + cited 5.1.2 p37; room-rent cap dropped with honest note; `regenerate_count=0`), reproduced across two runs that resolved to DeepSeek R1 and Llama-70B respectively — grounding behavior identical across model failover. **Step 4 fully closed.**
-- **2026-06-06** — **Step 5 partial — gateway pieces DONE (5.1 + 5.6).** (1) **Break-model** chaos virtual model group `insuriq-production-chaos` created (priority-0 broken → 403 → working fallback); `--break-model` toggle wired via `TFY_MODEL_CHAOS`; confirmed answering via DeepSeek with `chaos_mode: break_model`, 403+failover visible in server Request Traces. (2) **Input guardrails** group `insuriq-input-guardrails` live: `insuriq-pii` (mutate — confirmed masking policy number AND name before the model) + `insuriq-prompt-injection` (shieldPrompt, block → 400). Both fire server-side, seen in Request Traces. (3) **Issue-1 fix:** injection-block 400 was crashing the agent with an unhandled `BadRequestError`; now `gateway.py` catches `guardrails_input`/`guardrail_checks_failed` → `GuardrailBlocked` (with integration names), `synthesize_node.py` routes to an honest refusal naming the guardrail, no retry, receipt records `guardrail_blocked`. Verified in code; **CLI re-verify of the injection question (crash→clean refusal, exit 0) PENDING paste.** (4) Known **Issue-3**: injection reaches a tool arg before the synthesis-stage block — frame as "caught before influencing any model-generated answer." **Still TODO for Step 5:** 5.2 MCP spike (one tool through MCP Gateway — reachability of self-hosted server from TFY cloud is the open question, likely needs tunnel/deploy), 5.3 all 4 tools via MCP, 5.4 write-scope denial, 5.5 PII read-scope denial, 5.7 receipt enrichment.
+- **2026-06-02** — Gateway tier proven: Bedrock via TFY (us-east-1, 60 models); priority-based fallback Llama-3-70B → DeepSeek R1 traced on rate-limit. Anthropic blocked on expired AWS Marketplace agreement; non-blocking.
+- **2026-06-03** — **PIVOT:** project = **PolicyDesk**, resilient Q&A tier over a SEEDED `Policy`. Extraction OUT of scope. Two-tier resilience framing. Risk-first build order.
+- **2026-06-04** — **Seed fixture DONE.** `NIVA_BUPA_POLICY` hand-assembled from the real Niva Bupa ReAssure 2.0 PDF. Verbatim spans for demo-critical facts; honest `FLAGGED_UNKNOWN`s (room-rent cap, Cataract sub-limit). CAVEAT: scrub real member names from schedule spans before public push (§6 PII).
+- **2026-06-04** — **Step 3 (slice) DONE.** Both Tier-2 unknowns proven on a 5-node CLI graph. `durability="sync"` learning. Resume = `stream(None, same thread_id)`.
+- **2026-06-04** — **Step 4 (real graph) DONE.** Gateway synthesis (Tier-1 live), deterministic grounding gate, drop-and-note policy. cite-guard fix (multi-key cites → single verified key). Combined question DROP_AND_NOTE confirmed across DeepSeek + Llama. Fully closed.
+- **2026-06-06** — **Step 5 gateway pieces DONE.** Break-model chaos virtual model; both input guardrails live + traced; Issue-1 fix (guardrail-block 400 → honest refusal, no crash). PII evidence-payload false-positive logged as a known limitation.
+- **2026-06-06** — **Step 5.2 MCP DONE (then run-local).** `get_waiting_periods` exposed via MCP server `insuriq-vps-engine` on the VPS, registered in TFY MCP Gateway; Request Traces confirmed the agent called it THROUGH the gateway (initialize/tools/list with identity) — satisfies "MCP scoped usage." Scoping-denial demos (5.4/5.5) and promoting the other 3 tools CUT for time.
+- **2026-06-07** — **MCP switched to run-local** (`USE_MCP_FOR` empty) for demo stability. The streamable-HTTP transport fix (server now POST `/mcp`, was SSE `/sse`) is correct in code, but the gateway registration/proxy still pointed at SSE → Resync 404. DECISION: run tools locally for the recording; evidence MCP-through-gateway from the earlier traces; narrate honestly. (Live gateway link = post-hackathon.)
+- **2026-06-07** — **Demo screen DONE (Steps 6).** `/ask` + live happy path, then 3 gateway scenes (break-model, selective fail-tool, injection-block), then **Phase 3 crash-resume** via two endpoints: `/ask` with `crash_after_tools` interrupts before `crash_point` (checkpoint commits, worker survives) + `/resume` resumes from the committed checkpoint. PROVEN at backend: exactly 2 tool proof-prints across both calls (tools NOT re-run), `tool_attempts` identical, `checkpoint_resumed: true`. Ported into Next.js `/demo`. **PENDING:** browser click-through against local, and deploy `/resume` to production. No regression on other scenes. **NEXT: curate questions + record.**

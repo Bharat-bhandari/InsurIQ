@@ -10,6 +10,15 @@ services:
       PORT: 8082
       RELOAD: "false"
       CORS_ORIGINS: ${CORS_ORIGINS}
+      # Route get_waiting_periods through the REMOTE TFY MCP Gateway instead of
+      # the local tool body. These mirror GROQ_API_KEY above — read NATIVELY
+      # from the deploy environment (host shell / TrueFoundry secrets) and
+      # override the .env defaults, so the gateway URL + token never bake into
+      # the image. Default selects the spike tool remotely; pass USE_MCP_FOR=""
+      # to fall back to local resolution (CONTEXT.md §A6 / Step 5.2).
+      USE_MCP_FOR: ${USE_MCP_FOR:-get_waiting_periods}
+      TFY_MCP_URL: ${TFY_MCP_URL}
+      TFY_MCP_TOKEN: ${TFY_MCP_TOKEN}
     ports:
       - "127.0.0.1:8082:8082"
     restart: unless-stopped
