@@ -144,6 +144,13 @@ function ReceiptContent({ receipt: r }: { receipt: ReceiptData }) {
           {String(r.checkpoint_resumed)}
         </span>
         <P>,</P>
+        {/* Scene-6 proof: when resumed, the tools above were restored from the
+            checkpoint, not re-run (tool-attempt counts unchanged). */}
+        {r.checkpoint_resumed && (
+          <span className="rcp-s" style={{ marginLeft: 8 }}>
+            ← tools not re-run (restored from checkpoint)
+          </span>
+        )}
       </span>
 
       {/* guardrails_fired */}

@@ -443,7 +443,7 @@ export default function ThreadView({
             </svg>
             <span>
               Asking about <b>Niva Bupa ReAssure 2.0</b> — Platinum+ · policy active
-              since 29 March 2026.
+              since 29 March 2023.
             </span>
           </div>
 

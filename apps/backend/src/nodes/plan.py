@@ -16,7 +16,19 @@ from src.states.qa_state import QAState
 # Keyword → list of ToolCallSpec dicts. Conditions that have a dedicated entry
 # go first; the "default" demo plan covers the canonical knee-surgery question.
 _KNEE_TRIGGERS = ("knee", "joint replacement", "joint-replacement")
-_ROOM_TRIGGERS = ("room rent", "room-rent", "room cap", "per-day", "per day")
+# "eligible limit"/"eligible room" route the demo's room chips here so they hit
+# get_room_rent_rule: chip 2 ("…room above my eligible limit?") is the fail-tool
+# target, and chip 3 ("…per-day cap on my hospital room rent?") is the gate
+# drop-and-note hook on the FLAGGED_UNKNOWN room_rent_limit.
+_ROOM_TRIGGERS = (
+    "room rent",
+    "room-rent",
+    "room cap",
+    "per-day",
+    "per day",
+    "eligible limit",
+    "eligible room",
+)
 _CATARACT_TRIGGERS = ("cataract",)
 _HERNIA_TRIGGERS = ("hernia",)
 _PED_TRIGGERS = ("pre-existing", "pre existing", "ped")

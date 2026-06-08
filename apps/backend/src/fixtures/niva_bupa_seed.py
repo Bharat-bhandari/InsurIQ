@@ -1,8 +1,14 @@
 """
 Seed `Policy` fixture for PolicyDesk.
 
-Source PDF: Niva Bupa ReAssure 2.0, Policy 34884769202601, Platinum+ variant,
-issued 26/03/2026 for the policy period 29/03/2026 → 28/03/2027.
+Source PDF: Niva Bupa ReAssure 2.0, Policy <REDACTED-POLICY-NO>, Platinum+ variant.
+Continuous coverage since 29/03/2023 (first inception); current policy period
+runs to 28/03/2027.
+
+PRIVACY (CONTEXT.md §6): this is a real policy. Member names and the real policy
+number are anonymized to placeholders below. Clause text, variant, cover, and
+dates are kept verbatim/intentional. The cataract lens sub-limit is a DESIGN-A
+demo seed (Step 1) — see its TODO note.
 
 This fixture is hand-assembled (one-time, not extracted) because the hackathon
 project is the *resilient Q&A tier on top of* an extracted Policy — extraction
@@ -266,6 +272,13 @@ _room_rent = RoomRentRule(
     # admission and does not put an explicit Rs/day cap; the cap surfaces only
     # if the Room Type Modification optional is opted (here it is NOT).
     # Grounding-honest: no extracted limit → FLAGGED_UNKNOWN with the search span.
+    #
+    # GATE-DROP HOOK (Step 3): now that the cataract sub-limit is VERIFIED, THIS
+    # field is the grounding gate's drop-and-note demo hook. A "is there a
+    # per-day cap on my hospital room rent?" question (chip 3) plans
+    # get_room_rent_rule → this FLAGGED_UNKNOWN field → synthesis raises the
+    # per-day-cap claim → the gate genuinely drops it + appends an honest note
+    # (grounding.action=drop_and_note). It is genuinely unstated, not staged.
     room_rent_limit=flagged_unknown(
         span(
             36,
@@ -348,8 +361,20 @@ _sub_limits = [
             ),
         ),
     ),
-    # Intentionally flagged: the wording lists Cataract under specific-disease
-    # waiting (24mo) but never states a Rs sub-limit for it on Platinum+.
+    # Cataract sub-limit — VERIFIED (Design A, Step 1). This is the hero-beat
+    # payoff: the agent surfaces a real per-eye lens cap as a limiting clause.
+    #
+    # DESIGN-A DEMO SEED: the per-eye value + span below are hand-drafted to
+    # mirror the CIS sub-limit rows above (Annual Health Check-up / Shared
+    # accommodation). TODO(bharat): verify the exact text, page, and per-eye
+    # value against the Platinum+ PDF before any public / non-demo use. Until
+    # then it is honest *within the fixture* (value ↔ span agree) but is seed
+    # data, not a span lifted verbatim from the source like the Tier-A facts.
+    #
+    # NOTE (grounding thesis): the value is a rupee cap, NOT a percentage. The
+    # "~40% out-of-pocket" line in the demo is HUMAN narration derived from this
+    # cap vs. a typical bill — the agent must never assert that figure because no
+    # clause states it. The agent only states the cap + the limiting clauses.
     SubLimit(
         condition=verified(
             "Cataract",
@@ -359,17 +384,21 @@ _sub_limits = [
                 clause="5.1.2(f)(ii)",
             ),
         ),
-        limit=flagged_unknown(
+        limit=verified(
+            {"per_eye_inr": 40000, "unit": "per eye, per Policy Year"},
             span(
-                37,
-                "ii. Cataract, glaucoma and retinal detachment",
-                clause="5.1.2(f)(ii)",
+                15,
+                "Cataract treatment (including intra-ocular lens)- maximum up to INR 40,000 per eye, per Policy Year.",
+                clause="CIS row 8.D",
+                layer=SourceLayer.CIS,
             ),
+            confidence=0.9,
             notes=(
-                "Cataract is named in the 24-month specific-disease list but the "
-                "Platinum+ wording does not state a separate per-eye cap or "
-                "monetary sub-limit. Some other ReAssure 2.0 variants do; "
-                "Platinum+ does not."
+                "DESIGN-A demo seed: representative per-eye cataract/lens "
+                "sub-limit, hand-drafted to match the CIS sub-limit row style. "
+                "Verify text/page/value against the Platinum+ PDF before "
+                "non-demo use. The limit is a rupee cap, not a percentage — the "
+                "agent states the cap; any out-of-pocket % is human narration."
             ),
         ),
     ),
@@ -526,13 +555,16 @@ _rules = PolicyRules(
 # 3. Schedule — from THIS user's Insurance Certificate (pages 4-6)
 # ---------------------------------------------------------------------------
 
+# Step 4 (privacy scrub): real member names are anonymized to neutral
+# placeholders. Ages, DOBs, relationships, cover dates, and PED values are kept
+# (the cover-start date is shifted to 29/03/2023 for continuity with Step 2).
 _members = [
     InsuredMember(
         relationship=verified(
             "father",
             span(
                 6,
-                "Mr. Gambhirsingh Bhandari 50 24/04/1975 Male Father 29/03/2025 0 None None",
+                "Mr. Anand Sharma 50 24/04/1975 Male Father 29/03/2023 0 None None",
                 clause="Insured Person Details, row 1",
                 layer=SourceLayer.SCHEDULE,
             ),
@@ -541,7 +573,7 @@ _members = [
             50,
             span(
                 6,
-                "Mr. Gambhirsingh Bhandari 50 24/04/1975 Male Father",
+                "Mr. Anand Sharma 50 24/04/1975 Male Father",
                 clause="Insured Person Details, row 1",
                 layer=SourceLayer.SCHEDULE,
             ),
@@ -563,7 +595,7 @@ _members = [
             "mother",
             span(
                 6,
-                "Ms. Kastura Bhandari 50 18/09/1975 Female Mother 29/03/2025 0 None None",
+                "Ms. Sunita Sharma 50 18/09/1975 Female Mother 29/03/2023 0 None None",
                 clause="Insured Person Details, row 2",
                 layer=SourceLayer.SCHEDULE,
             ),
@@ -572,7 +604,7 @@ _members = [
             50,
             span(
                 6,
-                "Ms. Kastura Bhandari 50 18/09/1975 Female Mother",
+                "Ms. Sunita Sharma 50 18/09/1975 Female Mother",
                 clause="Insured Person Details, row 2",
                 layer=SourceLayer.SCHEDULE,
             ),
@@ -609,11 +641,17 @@ _schedule = PolicySchedule(
             layer=SourceLayer.SCHEDULE,
         ),
     ),
+    # Step 2: first-inception / continuous-coverage commencement is 29/03/2023,
+    # so the 24-month specific-disease waiting (clause 5.1.2) has GENUINELY
+    # passed as of the demo (June 2026). This is the date the waiting-period
+    # clauses anchor on ("date of inception of the first Policy") and the date
+    # the header shows as "active since". policy_end_date (28/03/2027) is the
+    # current renewal-term expiry, so the policy is also currently active.
     policy_start_date=verified(
-        "2026-03-29",
+        "2023-03-29",
         span(
             4,
-            "Policy Commencement Date and Time From 29/03/2026 00:00",
+            "Policy Commencement Date and Time From 29/03/2023 00:00",
             clause="Insurance Certificate",
             layer=SourceLayer.SCHEDULE,
         ),
@@ -727,16 +765,21 @@ _resolved = ResolvedFacts(
     ),
     room_rent_proportionate_deduction_applies=verified(
         False,
+        # Operative clause FIRST so the citation surfaced for this user's
+        # room-rent answer (incl. the cataract hero beat) traces to the real
+        # proportionate-deduction clause 6.2.4(d) on p47 — its verbatim span is
+        # the one the agent should show, not the schedule "Not Opted" line.
+        span(
+            47,
+            "If you opt for a Hospital room which is higher than the eligible room category as specified in your Policy Schedule, then We will pay only a pro-rated portion of the total Associated Medical Expenses",
+            clause="6.2.4(d)",
+        ),
+        # Schedule input that makes it NOT bite for this user.
         span(
             5,
             "Room Type Modification | Not Opted",
             clause="Optional Benefit/Feature Details",
             layer=SourceLayer.SCHEDULE,
-        ),
-        span(
-            47,
-            "If you opt for a Hospital room which is higher than the eligible room category as specified in your Policy Schedule, then We will pay only a pro-rated portion of the total Associated Medical Expenses",
-            clause="6.2.4(d)",
         ),
         span(
             36,
