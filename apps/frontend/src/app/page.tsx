@@ -65,7 +65,14 @@ function DocIcon() {
 
 function IcoFallback() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
@@ -76,7 +83,14 @@ function IcoFallback() {
 
 function IcoShield() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5z" />
     </svg>
   );
@@ -84,7 +98,14 @@ function IcoShield() {
 
 function IcoLock() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x={3} y={11} width={18} height={11} rx={2} />
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
@@ -93,7 +114,14 @@ function IcoLock() {
 
 function IcoWarning() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
       <path d="M12 9v4M12 17h.01" />
     </svg>
@@ -102,7 +130,14 @@ function IcoWarning() {
 
 function IcoResume() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <path d="M3 3v5h5" />
       <path d="M12 8v4l3 2" />
@@ -112,7 +147,14 @@ function IcoResume() {
 
 function IcoCheck() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M20 6 9 17l-5-5" />
     </svg>
   );
@@ -147,9 +189,9 @@ export default function LandingPage() {
             </div>
             <h1>Insurance answers that survive failure.</h1>
             <p className="lead">
-              InsurIQ answers questions about your health policy with a
-              citation for every fact — and keeps answering when the model goes
-              down, a tool fails, or the process crashes mid-question.
+              InsurIQ answers questions about your health policy with a citation
+              for every fact — and keeps answering when the model goes down, a
+              tool fails, or the process crashes mid-question.
             </p>
             <div className="hero-cta">
               <Link className="btn btn-primary btn-lg" href="/demo">
@@ -284,8 +326,7 @@ export default function LandingPage() {
             {/* Tier 2 */}
             <div className="tier tier--two">
               <div className="tier-tag">
-                Tier 2{" "}
-                <span className="badge">InsurIQ&apos;s own layer</span>
+                Tier 2 <span className="badge">InsurIQ&apos;s own layer</span>
               </div>
               <h3>Orchestration resilience</h3>
               <div className="tier-sub">
@@ -295,14 +336,13 @@ export default function LandingPage() {
 
               <div className="feat">
                 <div className="feat-ico">
-                  <IcoWarning />
+                  <IcoCheck />
                 </div>
                 <div className="feat-body">
-                  <div className="ft">Honest degradation</div>
+                  <div className="ft">Grounding gate</div>
                   <div className="fd">
-                    When a lookup tool fails, the agent answers what it can
-                    verify and openly flags what it couldn&apos;t — instead of
-                    guessing.
+                    It refuses to state any fact it can&apos;t trace to a
+                    verified clause in the actual policy.
                   </div>
                 </div>
               </div>
@@ -318,15 +358,17 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
+
               <div className="feat">
                 <div className="feat-ico">
-                  <IcoCheck />
+                  <IcoWarning />
                 </div>
                 <div className="feat-body">
-                  <div className="ft">Grounding gate</div>
+                  <div className="ft">Honest degradation</div>
                   <div className="fd">
-                    It refuses to state any fact it can&apos;t trace to a
-                    verified clause in the actual policy.
+                    When a lookup tool fails, the agent answers what it can
+                    verify and openly flags what it couldn&apos;t — instead of
+                    guessing.
                   </div>
                 </div>
               </div>
@@ -349,11 +391,11 @@ export default function LandingPage() {
           <h2>It says so when it doesn&apos;t know.</h2>
           <p className="lead">
             Every answer is tied to a verbatim clause from your actual policy.
-            When a fact can&apos;t be found or verified, InsurIQ{" "}
-            <b>flags it</b> rather than filling the gap with what
-            &lsquo;usually&rsquo; applies. Under failure, that honesty is
-            exactly what keeps it trustworthy — a degraded answer you can trust
-            beats a complete answer you can&apos;t.
+            When a fact can&apos;t be found or verified, InsurIQ <b>flags it</b>{" "}
+            rather than filling the gap with what &lsquo;usually&rsquo; applies.
+            Under failure, that honesty is exactly what keeps it trustworthy — a
+            degraded answer you can trust beats a complete answer you
+            can&apos;t.
           </p>
           <div className="proof-line">
             <span className="dot" />
